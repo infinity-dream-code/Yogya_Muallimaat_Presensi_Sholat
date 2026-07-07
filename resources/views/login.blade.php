@@ -237,7 +237,17 @@
 
             <form method="POST" action="{{ route('login') }}">
                 @csrf
-                <input type="hidden" name="app" value="presensi-sholat">
+                <div class="form-group">
+                    <label for="app">Aplikasi</label>
+                    <div class="input-wrap">
+                        <span class="icon"><i class="fas fa-layer-group"></i></span>
+                        <select id="app" name="app" required>
+                            <option value="presensi-sholat" {{ old('app', 'presensi-sholat') === 'presensi-sholat' ? 'selected' : '' }}>
+                                Aplikasi Presensi Sholat
+                            </option>
+                        </select>
+                    </div>
+                </div>
 
                 <div class="form-group">
                     <label for="username">Username</label>

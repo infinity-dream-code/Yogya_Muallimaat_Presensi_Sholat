@@ -32,12 +32,11 @@ class AuthController extends Controller
             !empty(config('services.cloudflare_turnstile.secret_key'));
 
         $validated = $request->validate([
+            'app' => ['required', 'in:presensi-sholat'],
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
             'cf-turnstile-response' => [$turnstileEnabled ? 'required' : 'nullable', 'string'],
         ]);
-
-        $validated['app'] = 'presensi-sholat';
 
         if ($turnstileEnabled && ! $this->verifyTurnstile($validated['cf-turnstile-response'] ?? null, $request->ip())) {
             return back()
