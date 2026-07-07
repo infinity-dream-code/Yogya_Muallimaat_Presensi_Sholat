@@ -1,0 +1,330 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+
+class AuthController extends Controller
+{
+    private const API_BASE_URL_PRESENSI_SHOLAT = 'http://vps1.smartpayment.co.id:8888/Data/Yogya_Muallimaat_PresensiSholat/WebAPI.php';
+    private const JWT_SECRET = 'a7c2a8a9b3c4a5a6a7a8a9b0c1a2a3';
+
+    public function showLogin()
+    {
+        // Jika sudah login, redirect ke dashboard
+        if (session()->has('user') && session('user.username')) {
+            return redirect()->route($this->dashboardRouteName(session('user.app')));
+        }
+        return view('login');
+    }
+
+    public function logout(Request $request)
+    {
+        $request->session()->flush();
+        return redirect()->route('login.form');
+    }
+
+    public function login(Request $request)
+    {
+        $turnstileEnabled = !empty(config('services.cloudflare_turnstile.site_key')) &&
+            !empty(config('services.cloudflare_turnstile.secret_key'));
+
+        $validated = $request->validate([
+            'username' => ['required', 'string'],
+            'password' => ['required', 'string'],
+            'cf-turnstile-response' => [$turnstileEnabled ? 'required' : 'nullable', 'string'],
+        ]);
+
+        $validated['app'] = 'presensi-sholat';
+
+        if ($turnstileEnabled && ! $this->verifyTurnstile($validated['cf-turnstile-response'] ?? null, $request->ip())) {
+            return back()
+                ->withInput($request->except('password'))
+                ->with('login_error', 'Verifikasi keamanan gagal. Silakan ulangi captcha.');
+        }
+
+        Log::info('Login attempt received', [
+            'app' => $validated['app'],
+            'username' => $validated['username'],
+        ]);
+
+        $apiBaseUrl = self::API_BASE_URL_PRESENSI_SHOLAT;
+
+        $payload = [
+            'METHOD'   => 'LoginRequest',
+            'USERNAME' => $validated['username'],
+            'PASSWORD' => $validated['password'],
+        ];
+
+        $token = $this->generateJwt($payload);
+
+        try {
+            Log::info('Sending request to external API', [
+                'url' => $apiBaseUrl,
+                'token_preview' => substr($token, 0, 40) . '...',
+            ]);
+
+            $response = Http::timeout(15)
+                ->get($apiBaseUrl . '?token=' . urlencode($token));
+
+            Log::info('External API response raw', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Error calling external API', [
+                'message' => $e->getMessage(),
+            ]);
+            return back()
+                ->withInput($request->except('password'))
+                ->with('login_error', 'Tidak dapat terhubung ke server. Silakan coba lagi.');
+        }
+
+        if (! $response->ok()) {
+            return back()
+                ->withInput($request->except('password'))
+                ->with('login_error', 'Terjadi kesalahan pada server. Silakan coba lagi.');
+        }
+
+        $data = $response->json();
+
+        if (isset($data['KodeRespon']) && (int) $data['KodeRespon'] === 1) {
+            // Simpan username asli yang diinput saat login (untuk keperluan API calls seperti RequestNewPassword)
+            // API RequestNewPassword mengharapkan username asli, bukan yang dikembalikan API login
+            $username = $validated['username'];
+
+            // Simpan informasi dasar user di session
+            $request->session()->put('user', [
+                'username' => $username,
+                'app'      => $validated['app'],
+            ]);
+
+            return redirect()
+                ->route('dashboard.presensi-sholat')
+                ->with('login_success', 'Login berhasil.');
+        }
+
+        $message = $data['PesanRespon'] ?? 'Login gagal. Akses Ditolak.';
+
+        return back()
+            ->withInput($request->except('password'))
+            ->with('login_error', $message);
+    }
+
+    private function generateJwt(array $payload): string
+    {
+        $header = [
+            'alg' => 'HS256',
+            'typ' => 'JWT',
+        ];
+
+        $headerEncoded = $this->base64UrlEncode(json_encode($header, JSON_UNESCAPED_SLASHES));
+        $payloadEncoded = $this->base64UrlEncode(json_encode($payload, JSON_UNESCAPED_SLASHES));
+
+        $signingInput = $headerEncoded . '.' . $payloadEncoded;
+        $signature = hash_hmac('sha256', $signingInput, self::JWT_SECRET, true);
+        $signatureEncoded = $this->base64UrlEncode($signature);
+
+        return $signingInput . '.' . $signatureEncoded;
+    }
+
+    private function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+    }
+
+    private function verifyTurnstile(?string $token, ?string $ipAddress = null): bool
+    {
+        if (empty($token)) {
+            return false;
+        }
+
+        $secretKey = config('services.cloudflare_turnstile.secret_key');
+        if (empty($secretKey)) {
+            return true;
+        }
+
+        try {
+            $response = Http::asForm()
+                ->timeout(10)
+                ->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+                    'secret' => $secretKey,
+                    'response' => $token,
+                    'remoteip' => $ipAddress,
+                ]);
+
+            if (! $response->ok()) {
+                Log::warning('Turnstile verification HTTP error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return false;
+            }
+
+            return (bool) ($response->json('success') ?? false);
+        } catch (\Throwable $e) {
+            Log::error('Turnstile verification exception', [
+                'message' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    public function showGantiPassword()
+    {
+        return redirect()->route('presensi.account.ganti-password');
+    }
+
+    public function showGantiPasswordPresensi()
+    {
+        return view('ganti_password_presensi');
+    }
+
+    public function gantiPassword(Request $request)
+    {
+        $validated = $request->validate([
+            'old_password' => ['required', 'string'],
+            'new_password' => ['required', 'string', 'min:3'],
+            'confirm_password' => ['required', 'string', 'same:new_password'],
+        ]);
+
+        $username = session('user.username');
+        if (!$username) {
+            return back()->with('password_error', 'Session tidak valid. Silakan login kembali.');
+        }
+
+        $apiBaseUrl = self::API_BASE_URL_PRESENSI_SHOLAT;
+
+        $oldPassword = $validated['old_password'];
+
+        $payload = [
+            'METHOD'       => 'RequestNewPassword',
+            'USERNAME'     => $username,
+            'PASSWORD'     => $oldPassword,
+            'NEWPASSWORD'  => $validated['new_password'],
+            'NEWPASSWORD2' => $validated['confirm_password'],
+        ];
+
+        // Log payload untuk debugging
+        Log::info('Ganti password payload', [
+            'payload' => $payload,
+            'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES),
+        ]);
+
+        $token = $this->generateJwt($payload);
+        
+        // Decode token untuk verifikasi
+        $parts = explode('.', $token);
+        if (count($parts) === 3) {
+            $decodedPayload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
+            Log::info('Ganti password decoded token payload', ['decoded' => $decodedPayload]);
+        }
+
+        try {
+            Log::info('Ganti password request', [
+                'username' => $username,
+                'payload' => $payload,
+                'token_preview' => substr($token, 0, 50) . '...',
+                'token_length' => strlen($token),
+            ]);
+
+            $url = $apiBaseUrl . '?token=' . urlencode($token);
+            Log::info('Ganti password API URL', [
+                'url_preview' => substr($url, 0, 100) . '...',
+                'url_length' => strlen($url),
+            ]);
+
+            // Coba GET dulu (sesuai dengan API lainnya)
+            $response = Http::timeout(15)
+                ->get($url);
+            
+            // Jika GET gagal dengan 500, coba beberapa variasi POST
+            if ($response->status() === 500 && empty($response->body())) {
+                Log::info('Trying POST method for ganti password');
+                
+                // Variasi 1: POST dengan token di query string (seperti GET)
+                $response = Http::timeout(15)
+                    ->post($url);
+                
+                // Jika masih 500, coba variasi 2: POST dengan token di body sebagai form
+                if ($response->status() === 500 && empty($response->body())) {
+                    Log::info('Trying POST with token in form body');
+                    $response = Http::timeout(15)
+                        ->asForm()
+                        ->post($apiBaseUrl, ['token' => $token]);
+                }
+                
+                // Jika masih 500, coba variasi 3: POST dengan token di body sebagai JSON
+                if ($response->status() === 500 && empty($response->body())) {
+                    Log::info('Trying POST with token in JSON body');
+                    $response = Http::timeout(15)
+                        ->asJson()
+                        ->post($apiBaseUrl, ['token' => $token]);
+                }
+            }
+
+            Log::info('Ganti password API response', [
+                'status' => $response->status(),
+                'headers' => $response->headers(),
+                'body' => $response->body(),
+                'body_length' => strlen($response->body()),
+                'successful' => $response->ok(),
+            ]);
+
+            if (!$response->ok()) {
+                $status = $response->status();
+                $body = $response->body();
+                
+                // Coba parse JSON response jika ada
+                $errorMsg = 'Terjadi kesalahan pada server (HTTP ' . $status . ').';
+                
+                if ($body) {
+                    $jsonData = json_decode($body, true);
+                    if (json_last_error() === JSON_ERROR_NONE && isset($jsonData['PesanRespon'])) {
+                        $errorMsg = $jsonData['PesanRespon'];
+                    } else {
+                        $errorMsg .= ' ' . substr($body, 0, 150);
+                    }
+                } else {
+                    // HTTP 500 dengan body kosong biasanya berarti server error atau endpoint tidak tersedia
+                    $errorMsg = 'Server API mengembalikan error tanpa pesan. Kemungkinan: password lama salah, endpoint tidak tersedia, atau server bermasalah. Silakan coba lagi atau hubungi administrator.';
+                }
+                
+                Log::error('Ganti password failed', [
+                    'status' => $status,
+                    'body' => $body,
+                    'body_length' => strlen($body),
+                    'username' => $username,
+                ]);
+                
+                return back()
+                    ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
+                    ->with('password_error', $errorMsg);
+            }
+
+            $data = $response->json();
+            
+            Log::info('Ganti password response data', ['data' => $data]);
+
+            if (isset($data['KodeRespon']) && (int) $data['KodeRespon'] === 1) {
+                return back()->with('password_success', 'Password berhasil diubah.');
+            }
+
+            $message = $data['PesanRespon'] ?? 'Gagal mengubah password.';
+            return back()
+                ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
+                ->with('password_error', $message);
+
+        } catch (\Throwable $e) {
+            Log::error('Error changing password', [
+                'message' => $e->getMessage(),
+            ]);
+            return back()
+                ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
+                ->with('password_error', 'Tidak dapat terhubung ke server. Silakan coba lagi.');
+        }
+    }
+}
+
