@@ -15,7 +15,7 @@ class LaporanSsoService
         $payload = [
             'sub' => $username,
             'iat' => $now,
-            'exp' => $now + 60,
+            'exp' => $now + 300,
             'iss' => config('app.url'),
         ];
 

@@ -66,7 +66,9 @@ class AuthController extends Controller
         $password = $validated['password'];
 
         try {
-            $user = CyberKey::query()->where('users', $username)->first();
+            $user = CyberKey::query()
+                ->whereRaw('LOWER(TRIM(users)) = ?', [strtolower($username)])
+                ->first();
         } catch (\Throwable $e) {
             Log::error('CyberKey lookup failed', ['message' => $e->getMessage()]);
             return back()
@@ -74,16 +76,28 @@ class AuthController extends Controller
                 ->with('login_error', 'Tidak dapat terhubung ke database. Silakan coba lagi.');
         }
 
-        if (! $user || empty($user->password)) {
+        if (! $user) {
+            Log::warning('Laporan login failed: user not found', ['username' => $username]);
             return back()
                 ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
                 ->with('login_error', 'Username atau password salah.');
         }
 
         $storedPassword = strtolower(trim((string) $user->password));
+
+        if ($storedPassword === '') {
+            Log::warning('Laporan login failed: empty password in cyber_key', [
+                'username' => $user->users,
+            ]);
+            return back()
+                ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
+                ->with('login_error', 'Akun ini belum memiliki password. Atur password dulu di aplikasi laporan atau hubungi administrator.');
+        }
+
         $inputHash = strtolower(md5($password));
 
         if ($inputHash !== $storedPassword) {
+            Log::warning('Laporan login failed: password mismatch', ['username' => $user->users]);
             return back()
                 ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
                 ->with('login_error', 'Username atau password salah.');
@@ -91,7 +105,7 @@ class AuthController extends Controller
 
         try {
             $sso = app(LaporanSsoService::class);
-            $token = $sso->createToken($username);
+            $token = $sso->createToken((string) $user->users);
             $redirectUrl = $sso->buildRedirectUrl($token);
 
             return redirect()->away($redirectUrl);

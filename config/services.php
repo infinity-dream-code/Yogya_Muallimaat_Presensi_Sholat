@@ -38,7 +38,7 @@ return [
 
     'laporan_sso' => [
         'url' => env('LAPORAN_SSO_URL', 'https://muallimaat-laporan.smartpayment.co.id'),
-        'secret' => env('PORTAL_SSO_SECRET'),
+        'secret' => env('PORTAL_SSO_SECRET', 'a7c2a8a9b3c4a5a6a7a8a9b0c1a2a3'),
     ],
 
 ];
