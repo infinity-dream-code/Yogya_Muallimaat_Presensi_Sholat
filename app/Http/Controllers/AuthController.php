@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\CyberKey;
 use App\Services\LaporanSsoService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -71,25 +70,39 @@ class AuthController extends Controller
     {
         $username = trim($validated['username']);
         $password = $validated['password'];
+        $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
 
         try {
-            $user = DB::table('user_prestasi')
-                ->whereRaw('LOWER(TRIM(username)) = ?', [strtolower($username)])
-                ->first();
+            $response = Http::timeout(20)->post($wsUrl, [
+                'method' => 'loginApproval',
+                'username' => $username,
+                'password' => $password,
+            ]);
         } catch (\Throwable $e) {
-            Log::error('Approval prestasi login DB failed', ['message' => $e->getMessage()]);
+            Log::error('Approval prestasi WS login failed', ['message' => $e->getMessage()]);
             return back()
                 ->withInput(['app' => 'approval-prestasi', 'username' => $username])
-                ->with('login_error', 'Tidak dapat terhubung ke database. Silakan coba lagi.');
+                ->with('login_error', 'Tidak dapat terhubung ke server approval. Silakan coba lagi.');
         }
 
-        if (! $user || ! $this->verifyPrestasiPassword($password, (string) ($user->password ?? ''))) {
+        if (! $response->ok()) {
             return back()
                 ->withInput(['app' => 'approval-prestasi', 'username' => $username])
-                ->with('login_error', 'Username atau password salah.');
+                ->with('login_error', 'Server approval sedang bermasalah. Silakan coba lagi.');
         }
 
-        $role = strtolower(trim((string) ($user->role ?? '')));
+        $payload = $response->json();
+        $data = (is_array($payload) && isset($payload['data']) && is_array($payload['data'])) ? $payload['data'] : [];
+        $token = trim((string) ($data['token'] ?? ''));
+        $role = strtolower(trim((string) ($data['role'] ?? '')));
+
+        if (($payload['status'] ?? 500) !== 200 || $token === '') {
+            $message = (string) ($payload['message'] ?? 'Username atau password salah.');
+            return back()
+                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
+                ->with('login_error', $message);
+        }
+
         if ($role === '' || $role === 'siswa') {
             return back()
                 ->withInput(['app' => 'approval-prestasi', 'username' => $username])
@@ -97,33 +110,15 @@ class AuthController extends Controller
         }
 
         $request->session()->put('user', [
-            'username' => (string) ($user->username ?? $username),
-            'nama' => (string) ($user->nama ?? $username),
-            'role' => (string) ($user->role ?? ''),
-            'code01' => trim((string) ($user->code01 ?? '')),
+            'username' => (string) ($data['username'] ?? $username),
+            'nama' => (string) ($data['nama'] ?? $username),
+            'role' => (string) ($data['role'] ?? ''),
+            'code01' => trim((string) ($data['code01'] ?? '')),
+            'approval_token' => $token,
             'app' => 'approval-prestasi',
         ]);
 
         return redirect()->route('approval.prestasi.index');
-    }
-
-    private function verifyPrestasiPassword(string $password, string $stored): bool
-    {
-        $stored = trim($stored);
-        if ($stored === '') {
-            return false;
-        }
-
-        $info = password_get_info($stored);
-        if (($info['algo'] ?? null) !== null) {
-            return password_verify($password, $stored);
-        }
-
-        $lower = strtolower($stored);
-        return hash_equals($lower, sha1($password))
-            || hash_equals($lower, hash('sha256', $password))
-            || hash_equals($lower, md5($password))
-            || hash_equals($stored, $password);
     }
 
     private function loginLaporan(array $validated)

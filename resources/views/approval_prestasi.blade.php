@@ -63,6 +63,9 @@
         @if($errors->any())
             <div class="msg err">{{ $errors->first() }}</div>
         @endif
+        @if(!empty($errorMessage))
+            <div class="msg err">{{ $errorMessage }}</div>
+        @endif
 
         <div class="toolbar">
             <a href="{{ route('approval.prestasi.index', ['status' => 'pending']) }}" class="chip {{ $status === 'pending' ? 'active' : '' }}">Pending</a>

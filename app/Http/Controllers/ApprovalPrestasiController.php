@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 class ApprovalPrestasiController extends Controller
 {
@@ -14,12 +14,13 @@ class ApprovalPrestasiController extends Controller
         }
 
         $status = $request->query('status', 'pending');
-        $items = $this->fetchItems($status);
+        [$items, $error] = $this->fetchItems($status);
 
         return view('approval_prestasi', [
             'items' => $items,
             'status' => $status,
             'scopeCode01' => trim((string) session('user.code01', '')),
+            'errorMessage' => $error,
         ]);
     }
 
@@ -35,46 +36,30 @@ class ApprovalPrestasiController extends Controller
             'status' => ['nullable', 'string', 'in:all,pending,approved'],
         ]);
 
-        $userCode01 = trim((string) session('user.code01', ''));
-        $approvedBy = trim((string) session('user.nama', session('user.username', 'SYSTEM')));
-        if ($approvedBy === '') {
-            $approvedBy = 'SYSTEM';
+        $token = trim((string) session('user.approval_token', ''));
+        if ($token === '') {
+            return redirect()->route('login.form')->with('login_error', 'Sesi approval berakhir. Silakan login ulang.');
+        }
+        $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
+
+        try {
+            $response = Http::timeout(20)->post($wsUrl, [
+                'method' => 'approval',
+                'token' => $token,
+                'action' => $validated['action'],
+                'id' => (int) $validated['id'],
+            ]);
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Tidak dapat terhubung ke server approval.');
         }
 
-        $rewardRow = DB::table('aka_reward as ar')
-            ->leftJoin('scctcust as sc', 'sc.CUSTID', '=', 'ar.custid')
-            ->select('ar.id', 'sc.CODE01')
-            ->where('ar.id', (int) $validated['id'])
-            ->when($userCode01 !== '', function ($query) use ($userCode01) {
-                $query->where('sc.CODE01', $userCode01);
-            })
-            ->first();
-
-        if (! $rewardRow) {
-            return back()->with('error', 'Data tidak ditemukan atau bukan scope sekolah Anda.');
+        $payload = $response->json();
+        if (! $response->ok() || ! is_array($payload) || (int) ($payload['status'] ?? 500) !== 200) {
+            $message = is_array($payload) ? (string) ($payload['message'] ?? 'Aksi approval gagal.') : 'Aksi approval gagal.';
+            return back()->with('error', $message);
         }
 
-        if ($validated['action'] === 'approve') {
-            DB::table('aka_reward')
-                ->where('id', (int) $validated['id'])
-                ->update([
-                    'isapproved' => 1,
-                    'approveddate' => now(),
-                    'approvedby' => $approvedBy,
-                    'updated_at' => now(),
-                ]);
-            $message = 'Data berhasil di-approve.';
-        } else {
-            DB::table('aka_reward')
-                ->where('id', (int) $validated['id'])
-                ->update([
-                    'isapproved' => 0,
-                    'approveddate' => null,
-                    'approvedby' => null,
-                    'updated_at' => now(),
-                ]);
-            $message = 'Data berhasil ditolak.';
-        }
+        $message = (string) (($payload['data']['message'] ?? null) ?: 'Aksi berhasil.');
 
         return redirect()
             ->route('approval.prestasi.index', ['status' => $validated['status'] ?? 'pending'])
@@ -83,43 +68,46 @@ class ApprovalPrestasiController extends Controller
 
     private function fetchItems(string $status): array
     {
-        $userCode01 = trim((string) session('user.code01', ''));
-        $query = DB::table('aka_reward as ar')
-            ->leftJoin('scctcust as sc', 'sc.CUSTID', '=', 'ar.custid')
-            ->leftJoin('mst_sekolah as ms', 'ms.CODE01', '=', 'sc.CODE01')
-            ->select(
-                'ar.id',
-                'ar.custid',
-                'ar.nocust',
-                'ar.nmcust',
-                'ar.kelas',
-                'ar.jenis_prestasi',
-                'ar.keterangan',
-                'ar.nilai_penghargaan',
-                'ar.bta',
-                'ar.url',
-                'ar.isapproved',
-                'ar.approveddate',
-                'ar.approvedby',
-                'ar.created_at',
-                'sc.CODE01 as code01',
-                'ms.DESC01 as sekolah'
-            )
-            ->when($userCode01 !== '', function ($builder) use ($userCode01) {
-                $builder->where('sc.CODE01', $userCode01);
-            })
-            ->orderByDesc('ar.created_at')
-            ->orderByDesc('ar.id');
+        $token = trim((string) session('user.approval_token', ''));
+        if ($token === '') {
+            return [[], 'Sesi approval berakhir. Silakan login ulang.'];
+        }
+        $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
 
+        $isapproved = '';
         if ($status === 'pending') {
-            $query->where('ar.isapproved', 0);
+            $isapproved = '0';
         } elseif ($status === 'approved') {
-            $query->where('ar.isapproved', 1);
+            $isapproved = '1';
         }
 
-        return $query->limit(1000)->get()->map(function ($row) {
-            return (array) $row;
-        })->toArray();
+        try {
+            $response = Http::timeout(20)->post($wsUrl, [
+                'method' => 'approval',
+                'token' => $token,
+                'action' => 'list',
+                'isapproved' => $isapproved,
+            ]);
+        } catch (\Throwable $e) {
+            return [[], 'Tidak dapat terhubung ke server approval.'];
+        }
+
+        $payload = $response->json();
+        if (! $response->ok() || ! is_array($payload) || (int) ($payload['status'] ?? 500) !== 200) {
+            $message = is_array($payload) ? (string) ($payload['message'] ?? 'Gagal memuat data approval.') : 'Gagal memuat data approval.';
+            return [[], $message];
+        }
+
+        $items = [];
+        if (isset($payload['data']['items']) && is_array($payload['data']['items'])) {
+            foreach ($payload['data']['items'] as $row) {
+                if (is_array($row)) {
+                    $items[] = $row;
+                }
+            }
+        }
+
+        return [$items, null];
     }
 }
 
