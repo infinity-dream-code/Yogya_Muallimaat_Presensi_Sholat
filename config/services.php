@@ -36,4 +36,9 @@ return [
         'secret_key' => env('CLOUDFLARE_TURNSTILE_SECRET_KEY'),
     ],
 
+    'laporan_sso' => [
+        'url' => env('LAPORAN_SSO_URL', 'https://muallimaat-laporan.smartpayment.co.id'),
+        'secret' => env('PORTAL_SSO_SECRET'),
+    ],
+
 ];

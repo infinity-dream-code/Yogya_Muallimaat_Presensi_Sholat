@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CyberKey;
+use App\Services\LaporanSsoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -13,10 +15,12 @@ class AuthController extends Controller
 
     public function showLogin()
     {
-        // Jika sudah login, redirect ke dashboard
         if (session()->has('user') && session('user.username')) {
-            return redirect()->route($this->dashboardRouteName(session('user.app')));
+            if (session('user.app') === 'presensi-sholat') {
+                return redirect()->route('dashboard.presensi-sholat');
+            }
         }
+
         return view('login');
     }
 
@@ -32,7 +36,7 @@ class AuthController extends Controller
             !empty(config('services.cloudflare_turnstile.secret_key'));
 
         $validated = $request->validate([
-            'app' => ['required', 'in:presensi-sholat'],
+            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan'],
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
             'cf-turnstile-response' => [$turnstileEnabled ? 'required' : 'nullable', 'string'],
@@ -49,6 +53,58 @@ class AuthController extends Controller
             'username' => $validated['username'],
         ]);
 
+        if ($validated['app'] === 'aplikasi-laporan') {
+            return $this->loginLaporan($validated);
+        }
+
+        return $this->loginPresensiSholat($request, $validated);
+    }
+
+    private function loginLaporan(array $validated)
+    {
+        $username = trim($validated['username']);
+        $password = $validated['password'];
+
+        try {
+            $user = CyberKey::query()->where('users', $username)->first();
+        } catch (\Throwable $e) {
+            Log::error('CyberKey lookup failed', ['message' => $e->getMessage()]);
+            return back()
+                ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
+                ->with('login_error', 'Tidak dapat terhubung ke database. Silakan coba lagi.');
+        }
+
+        if (! $user || empty($user->password)) {
+            return back()
+                ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
+                ->with('login_error', 'Username atau password salah.');
+        }
+
+        $storedPassword = strtolower(trim((string) $user->password));
+        $inputHash = strtolower(md5($password));
+
+        if ($inputHash !== $storedPassword) {
+            return back()
+                ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
+                ->with('login_error', 'Username atau password salah.');
+        }
+
+        try {
+            $sso = app(LaporanSsoService::class);
+            $token = $sso->createToken($username);
+            $redirectUrl = $sso->buildRedirectUrl($token);
+
+            return redirect()->away($redirectUrl);
+        } catch (\Throwable $e) {
+            Log::error('Laporan SSO token generation failed', ['message' => $e->getMessage()]);
+            return back()
+                ->withInput(['app' => 'aplikasi-laporan', 'username' => $username])
+                ->with('login_error', 'Gagal membuat sesi SSO. Silakan coba lagi.');
+        }
+    }
+
+    private function loginPresensiSholat(Request $request, array $validated)
+    {
         $apiBaseUrl = self::API_BASE_URL_PRESENSI_SHOLAT;
 
         $payload = [
@@ -90,14 +146,11 @@ class AuthController extends Controller
         $data = $response->json();
 
         if (isset($data['KodeRespon']) && (int) $data['KodeRespon'] === 1) {
-            // Simpan username asli yang diinput saat login (untuk keperluan API calls seperti RequestNewPassword)
-            // API RequestNewPassword mengharapkan username asli, bukan yang dikembalikan API login
             $username = $validated['username'];
 
-            // Simpan informasi dasar user di session
             $request->session()->put('user', [
                 'username' => $username,
-                'app'      => $validated['app'],
+                'app'      => 'presensi-sholat',
             ]);
 
             return redirect()
@@ -206,15 +259,13 @@ class AuthController extends Controller
             'NEWPASSWORD2' => $validated['confirm_password'],
         ];
 
-        // Log payload untuk debugging
         Log::info('Ganti password payload', [
             'payload' => $payload,
             'payload_json' => json_encode($payload, JSON_UNESCAPED_SLASHES),
         ]);
 
         $token = $this->generateJwt($payload);
-        
-        // Decode token untuk verifikasi
+
         $parts = explode('.', $token);
         if (count($parts) === 3) {
             $decodedPayload = json_decode(base64_decode(strtr($parts[1], '-_', '+/')), true);
@@ -235,27 +286,22 @@ class AuthController extends Controller
                 'url_length' => strlen($url),
             ]);
 
-            // Coba GET dulu (sesuai dengan API lainnya)
             $response = Http::timeout(15)
                 ->get($url);
-            
-            // Jika GET gagal dengan 500, coba beberapa variasi POST
+
             if ($response->status() === 500 && empty($response->body())) {
                 Log::info('Trying POST method for ganti password');
-                
-                // Variasi 1: POST dengan token di query string (seperti GET)
+
                 $response = Http::timeout(15)
                     ->post($url);
-                
-                // Jika masih 500, coba variasi 2: POST dengan token di body sebagai form
+
                 if ($response->status() === 500 && empty($response->body())) {
                     Log::info('Trying POST with token in form body');
                     $response = Http::timeout(15)
                         ->asForm()
                         ->post($apiBaseUrl, ['token' => $token]);
                 }
-                
-                // Jika masih 500, coba variasi 3: POST dengan token di body sebagai JSON
+
                 if ($response->status() === 500 && empty($response->body())) {
                     Log::info('Trying POST with token in JSON body');
                     $response = Http::timeout(15)
@@ -275,10 +321,9 @@ class AuthController extends Controller
             if (!$response->ok()) {
                 $status = $response->status();
                 $body = $response->body();
-                
-                // Coba parse JSON response jika ada
+
                 $errorMsg = 'Terjadi kesalahan pada server (HTTP ' . $status . ').';
-                
+
                 if ($body) {
                     $jsonData = json_decode($body, true);
                     if (json_last_error() === JSON_ERROR_NONE && isset($jsonData['PesanRespon'])) {
@@ -287,24 +332,23 @@ class AuthController extends Controller
                         $errorMsg .= ' ' . substr($body, 0, 150);
                     }
                 } else {
-                    // HTTP 500 dengan body kosong biasanya berarti server error atau endpoint tidak tersedia
                     $errorMsg = 'Server API mengembalikan error tanpa pesan. Kemungkinan: password lama salah, endpoint tidak tersedia, atau server bermasalah. Silakan coba lagi atau hubungi administrator.';
                 }
-                
+
                 Log::error('Ganti password failed', [
                     'status' => $status,
                     'body' => $body,
                     'body_length' => strlen($body),
                     'username' => $username,
                 ]);
-                
+
                 return back()
                     ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
                     ->with('password_error', $errorMsg);
             }
 
             $data = $response->json();
-            
+
             Log::info('Ganti password response data', ['data' => $data]);
 
             if (isset($data['KodeRespon']) && (int) $data['KodeRespon'] === 1) {
@@ -326,4 +370,3 @@ class AuthController extends Controller
         }
     }
 }
-

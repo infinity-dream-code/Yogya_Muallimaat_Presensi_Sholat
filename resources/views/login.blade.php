@@ -245,6 +245,9 @@
                             <option value="presensi-sholat" {{ old('app', 'presensi-sholat') === 'presensi-sholat' ? 'selected' : '' }}>
                                 Aplikasi Presensi Sholat
                             </option>
+                            <option value="aplikasi-laporan" {{ old('app') === 'aplikasi-laporan' ? 'selected' : '' }}>
+                                Aplikasi Laporan
+                            </option>
                         </select>
                     </div>
                 </div>
