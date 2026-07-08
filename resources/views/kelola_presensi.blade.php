@@ -504,7 +504,7 @@
             </li>
         </ul>
     </div>
-    <div class="sb-foot">v1.2.1</div>
+    <div class="sb-foot">App Ver : 1.2.1</div>
 </aside>
 <div class="sb-overlay" id="sbOverlay"></div>
 

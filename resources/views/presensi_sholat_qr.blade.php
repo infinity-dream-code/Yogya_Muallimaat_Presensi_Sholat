@@ -80,12 +80,82 @@
         .status { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: #64748b; }
         .dot { width: 9px; height: 9px; border-radius: 999px; background: #22c55e; box-shadow: 0 0 0 4px rgba(34,197,94,0.12); }
         .content { padding: 0; }
+        .mode-switch {
+            display: flex;
+            gap: 8px;
+            padding: 0 16px 12px;
+        }
+        .mode-btn {
+            flex: 1;
+            border: 1px solid #ddd6fe;
+            background: #ffffff;
+            color: #6d28d9;
+            border-radius: 10px;
+            padding: 9px 12px;
+            font-size: 0.84rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .mode-btn.active {
+            background: #7c3aed;
+            border-color: #7c3aed;
+            color: #ffffff;
+        }
         .scanner-wrap {
             position: relative;
             width: 100%;
             height: calc(100vh - 92px);
             background: #000;
             overflow: hidden;
+        }
+        .scanner-wrap.hidden { display: none; }
+        .pid-wrap {
+            display: none;
+            padding: 20px 16px 16px;
+        }
+        .pid-wrap.active { display: block; }
+        .pid-card {
+            background: #ffffff;
+            border: 1px solid #e9d5ff;
+            border-radius: 14px;
+            padding: 16px;
+            box-shadow: 0 8px 20px rgba(76, 29, 149, 0.08);
+        }
+        .pid-label {
+            font-size: 0.82rem;
+            color: #6b607f;
+            margin-bottom: 8px;
+        }
+        .pid-input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .pid-input {
+            flex: 1;
+            height: 42px;
+            border: 1px solid #ddd6fe;
+            border-radius: 10px;
+            padding: 0 12px;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .pid-input:focus {
+            border-color: #a855f7;
+            box-shadow: 0 0 0 3px rgba(168,85,247,0.14);
+        }
+        .pid-submit {
+            border: none;
+            border-radius: 10px;
+            background: #7c3aed;
+            color: #fff;
+            font-weight: 600;
+            padding: 0 14px;
+            cursor: pointer;
+        }
+        .pid-help {
+            margin-top: 8px;
+            font-size: 0.78rem;
+            color: #7b748f;
         }
         #video {
             position: absolute;
@@ -165,6 +235,10 @@
     </div>
 
     <div class="content">
+        <div class="mode-switch">
+            <button class="mode-btn active" id="modeQrBtn" type="button">QR</button>
+            <button class="mode-btn" id="modePidBtn" type="button">Kartu (PID)</button>
+        </div>
         <div class="scanner-wrap">
             <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
@@ -174,6 +248,16 @@
                     <div class="c4"></div>
                     <div class="scan-line"></div>
                 </div>
+            </div>
+        </div>
+        <div class="pid-wrap" id="pidWrap">
+            <div class="pid-card">
+                <div class="pid-label">Tap kartu atau input nomor kartu/PID</div>
+                <div class="pid-input-row">
+                    <input type="text" id="pidInput" class="pid-input" placeholder="Nomor kartu / PID" autocomplete="off">
+                    <button type="button" id="pidSubmit" class="pid-submit">Kirim</button>
+                </div>
+                <div class="pid-help">Tip: jika reader kartu bertipe keyboard, cukup tap kartu lalu Enter.</div>
             </div>
         </div>
         <div class="hint" id="hint">Arahkan kamera ke QR Code</div>
@@ -263,11 +347,20 @@
     const hintEl   = document.getElementById('hint');
     const video    = document.getElementById('video');
     const canvas   = document.getElementById('canvas');
+    const scannerWrap = document.querySelector('.scanner-wrap');
+    const pidWrap = document.getElementById('pidWrap');
+    const modeQrBtn = document.getElementById('modeQrBtn');
+    const modePidBtn = document.getElementById('modePidBtn');
+    const pidInput = document.getElementById('pidInput');
+    const pidSubmit = document.getElementById('pidSubmit');
 
     let stream    = null;
     let rafId     = null;
     let isPosting = false;
     let isScanning = false;
+    let mode = 'qr';
+    let pidBuffer = '';
+    let lastPidKeyAt = 0;
 
     function setStatus(text, isReady) {
         var c = isReady ? '#22c55e' : '#f59e0b';
@@ -341,9 +434,9 @@
         video.srcObject = null;
     }
 
-    async function onScanSuccess(decodedText) {
+    async function submitNokartu(rawValue) {
         if (isPosting) return;
-        var nokartu = (decodedText || '').trim();
+        var nokartu = (rawValue || '').trim();
         if (!nokartu) return;
 
         isPosting = true;
@@ -378,14 +471,74 @@
         } finally {
             isPosting = false;
             setStatus('Ready', true);
-            hintEl.textContent = 'Arahkan kamera ke QR Code';
-            isScanning = true;
-            rafId = requestAnimationFrame(tick);
+            if (mode === 'qr') {
+                hintEl.textContent = 'Arahkan kamera ke QR Code';
+                isScanning = true;
+                rafId = requestAnimationFrame(tick);
+            } else {
+                hintEl.textContent = 'Tempel kartu PID atau input manual.';
+                pidInput.value = '';
+                pidInput.focus();
+            }
         }
+    }
+
+    async function onScanSuccess(decodedText) {
+        await submitNokartu(decodedText);
+    }
+
+    function setMode(nextMode) {
+        mode = nextMode === 'pid' ? 'pid' : 'qr';
+        const isQr = mode === 'qr';
+        modeQrBtn.classList.toggle('active', isQr);
+        modePidBtn.classList.toggle('active', !isQr);
+        scannerWrap.classList.toggle('hidden', !isQr);
+        pidWrap.classList.toggle('active', !isQr);
+        if (isQr) {
+            hintEl.textContent = 'Arahkan kamera ke QR Code';
+            startScanner();
+        } else {
+            stopScanner();
+            hintEl.textContent = 'Tempel kartu PID atau input manual.';
+            setStatus('PID Ready', true);
+            pidInput.focus();
+        }
+    }
+
+    async function submitPidInput() {
+        await submitNokartu(pidInput.value);
     }
 
     document.addEventListener('DOMContentLoaded', function() {
         startScanner();
+        modeQrBtn.addEventListener('click', function(){ setMode('qr'); });
+        modePidBtn.addEventListener('click', function(){ setMode('pid'); });
+        pidSubmit.addEventListener('click', submitPidInput);
+        pidInput.addEventListener('keydown', function(e){
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitPidInput();
+            }
+        });
+        document.addEventListener('keydown', function(e){
+            if (mode !== 'pid' || isPosting) return;
+            const now = Date.now();
+            if (now - lastPidKeyAt > 150) {
+                pidBuffer = '';
+            }
+            lastPidKeyAt = now;
+            if (e.key === 'Enter') {
+                if (pidBuffer.trim()) {
+                    pidInput.value = pidBuffer;
+                    submitPidInput();
+                    pidBuffer = '';
+                }
+                return;
+            }
+            if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                pidBuffer += e.key;
+            }
+        });
     });
 </script>
 </body>
