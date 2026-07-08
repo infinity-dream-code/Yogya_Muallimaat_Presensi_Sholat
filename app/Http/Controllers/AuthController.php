@@ -71,6 +71,17 @@ class AuthController extends Controller
         $username = trim($validated['username']);
         $password = $validated['password'];
         $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
+        $wsRequest = [
+            'method' => 'loginApproval',
+            'username' => $username,
+            // password jangan dilog
+        ];
+
+        Log::info('Approval WS login request', [
+            'url' => $wsUrl,
+            'request' => $wsRequest,
+            'ip' => $request->ip(),
+        ]);
 
         try {
             $response = Http::timeout(20)->post($wsUrl, [
@@ -86,12 +97,24 @@ class AuthController extends Controller
         }
 
         if (! $response->ok()) {
+            Log::warning('Approval WS login HTTP non-200', [
+                'url' => $wsUrl,
+                'status' => $response->status(),
+                'body' => substr((string) $response->body(), 0, 1000),
+                'username' => $username,
+            ]);
             return back()
                 ->withInput(['app' => 'approval-prestasi', 'username' => $username])
                 ->with('login_error', 'Server approval sedang bermasalah. Silakan coba lagi.');
         }
 
         $payload = $response->json();
+        Log::info('Approval WS login response', [
+            'url' => $wsUrl,
+            'status' => $response->status(),
+            'json' => $payload,
+            'username' => $username,
+        ]);
         $data = (is_array($payload) && isset($payload['data']) && is_array($payload['data'])) ? $payload['data'] : [];
         $token = trim((string) ($data['token'] ?? ''));
         $role = strtolower(trim((string) ($data['role'] ?? '')));

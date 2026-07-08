@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class ApprovalPrestasiController extends Controller
 {
@@ -41,6 +42,17 @@ class ApprovalPrestasiController extends Controller
             return redirect()->route('login.form')->with('login_error', 'Sesi approval berakhir. Silakan login ulang.');
         }
         $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
+        $wsRequest = [
+            'method' => 'approval',
+            'action' => $validated['action'],
+            'id' => (int) $validated['id'],
+            'status_filter' => $validated['status'] ?? 'pending',
+        ];
+        Log::info('Approval WS action request', [
+            'url' => $wsUrl,
+            'request' => $wsRequest,
+            'username' => session('user.username'),
+        ]);
 
         try {
             $response = Http::timeout(20)->post($wsUrl, [
@@ -50,10 +62,22 @@ class ApprovalPrestasiController extends Controller
                 'id' => (int) $validated['id'],
             ]);
         } catch (\Throwable $e) {
+            Log::error('Approval WS action exception', [
+                'url' => $wsUrl,
+                'request' => $wsRequest,
+                'message' => $e->getMessage(),
+            ]);
             return back()->with('error', 'Tidak dapat terhubung ke server approval.');
         }
 
         $payload = $response->json();
+        Log::info('Approval WS action response', [
+            'url' => $wsUrl,
+            'status' => $response->status(),
+            'json' => $payload,
+            'request' => $wsRequest,
+            'username' => session('user.username'),
+        ]);
         if (! $response->ok() || ! is_array($payload) || (int) ($payload['status'] ?? 500) !== 200) {
             $message = is_array($payload) ? (string) ($payload['message'] ?? 'Aksi approval gagal.') : 'Aksi approval gagal.';
             return back()->with('error', $message);
@@ -81,6 +105,18 @@ class ApprovalPrestasiController extends Controller
             $isapproved = '1';
         }
 
+        $wsRequest = [
+            'method' => 'approval',
+            'action' => 'list',
+            'isapproved' => $isapproved,
+        ];
+        Log::info('Approval WS list request', [
+            'url' => $wsUrl,
+            'request' => $wsRequest,
+            'username' => session('user.username'),
+            'scope_code01' => session('user.code01'),
+        ]);
+
         try {
             $response = Http::timeout(20)->post($wsUrl, [
                 'method' => 'approval',
@@ -89,10 +125,22 @@ class ApprovalPrestasiController extends Controller
                 'isapproved' => $isapproved,
             ]);
         } catch (\Throwable $e) {
+            Log::error('Approval WS list exception', [
+                'url' => $wsUrl,
+                'request' => $wsRequest,
+                'message' => $e->getMessage(),
+            ]);
             return [[], 'Tidak dapat terhubung ke server approval.'];
         }
 
         $payload = $response->json();
+        Log::info('Approval WS list response', [
+            'url' => $wsUrl,
+            'status' => $response->status(),
+            'json' => $payload,
+            'request' => $wsRequest,
+            'username' => session('user.username'),
+        ]);
         if (! $response->ok() || ! is_array($payload) || (int) ($payload['status'] ?? 500) !== 200) {
             $message = is_array($payload) ? (string) ($payload['message'] ?? 'Gagal memuat data approval.') : 'Gagal memuat data approval.';
             return [[], $message];
