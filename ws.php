@@ -854,6 +854,12 @@ function doApproval(array $req, array $auth): array
 
     if ($action === 'list') {
         $status = trim((string) ($req["isapproved"] ?? ''));
+        $q = trim((string) ($req["q"] ?? ""));
+        $tanggal = trim((string) ($req["tanggal"] ?? ""));
+        if ($tanggal !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggal)) {
+            $tanggal = '';
+        }
+
         $sql = "
             SELECT
                 ar.id,
@@ -876,25 +882,54 @@ function doApproval(array $req, array $auth): array
             FROM aka_reward ar
             LEFT JOIN scctcust sc ON sc.CUSTID = ar.custid
             LEFT JOIN mst_sekolah ms ON ms.CODE01 = sc.CODE01
-            WHERE (:code01 = '' OR sc.CODE01 = :code01)
+            WHERE (:code01_empty = '' OR sc.CODE01 = :code01_value)
         ";
         if ($status === '0' || $status === '1') {
             $sql .= " AND ar.isapproved = :isapproved ";
         }
+        if ($q !== '') {
+            $sql .= " AND (ar.nocust LIKE :q_nocust OR ar.nmcust LIKE :q_nmcust) ";
+        }
+        if ($tanggal !== '') {
+            $sql .= " AND DATE(ar.created_at) = :tanggal ";
+        }
         $sql .= " ORDER BY ar.created_at DESC, ar.id DESC LIMIT 1000 ";
 
         $stmt = $pdo->prepare($sql);
-        $stmt->bindValue(":code01", $userCode01, PDO::PARAM_STR);
+        $stmt->bindValue(":code01_empty", $userCode01, PDO::PARAM_STR);
+        $stmt->bindValue(":code01_value", $userCode01, PDO::PARAM_STR);
         if ($status === '0' || $status === '1') {
             $stmt->bindValue(":isapproved", (int) $status, PDO::PARAM_INT);
         }
+        if ($q !== '') {
+            $like = '%' . $q . '%';
+            $stmt->bindValue(":q_nocust", $like, PDO::PARAM_STR);
+            $stmt->bindValue(":q_nmcust", $like, PDO::PARAM_STR);
+        }
+        if ($tanggal !== '') {
+            $stmt->bindValue(":tanggal", $tanggal, PDO::PARAM_STR);
+        }
         $stmt->execute();
         $rows = $stmt->fetchAll();
+
+        $scopeSekolah = '';
+        if ($userCode01 !== '') {
+            $schStmt = $pdo->prepare("SELECT DESC01 FROM mst_sekolah WHERE CODE01 = :code01 LIMIT 1");
+            $schStmt->bindValue(":code01", $userCode01, PDO::PARAM_STR);
+            $schStmt->execute();
+            $scopeSekolah = trim((string) ($schStmt->fetchColumn() ?: ''));
+        }
 
         return [
             "items" => $rows ?: [],
             "total" => count($rows ?: []),
             "scope_code01" => $userCode01,
+            "scope_sekolah" => $scopeSekolah,
+            "filters" => [
+                "q" => $q,
+                "tanggal" => $tanggal,
+                "isapproved" => $status,
+            ],
         ];
     }
 
@@ -908,12 +943,13 @@ function doApproval(array $req, array $auth): array
         FROM aka_reward ar
         LEFT JOIN scctcust sc ON sc.CUSTID = ar.custid
         WHERE ar.id = :id
-          AND (:code01 = '' OR sc.CODE01 = :code01)
+          AND (:code01_empty = '' OR sc.CODE01 = :code01_value)
         LIMIT 1
     ";
     $checkStmt = $pdo->prepare($checkSql);
     $checkStmt->bindValue(":id", $id, PDO::PARAM_INT);
-    $checkStmt->bindValue(":code01", $userCode01, PDO::PARAM_STR);
+    $checkStmt->bindValue(":code01_empty", $userCode01, PDO::PARAM_STR);
+    $checkStmt->bindValue(":code01_value", $userCode01, PDO::PARAM_STR);
     $checkStmt->execute();
     if (!$checkStmt->fetch()) {
         fail(404, "Data tidak ditemukan atau di luar akses sekolah");
