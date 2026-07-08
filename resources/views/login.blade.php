@@ -248,6 +248,9 @@
                             <option value="aplikasi-laporan" {{ old('app') === 'aplikasi-laporan' ? 'selected' : '' }}>
                                 Aplikasi Laporan
                             </option>
+                            <option value="approval-prestasi" {{ old('app') === 'approval-prestasi' ? 'selected' : '' }}>
+                                Aplikasi Approval Prestasi
+                            </option>
                         </select>
                     </div>
                 </div>

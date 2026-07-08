@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\CyberKey;
 use App\Services\LaporanSsoService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -18,6 +19,9 @@ class AuthController extends Controller
         if (session()->has('user') && session('user.username')) {
             if (session('user.app') === 'presensi-sholat') {
                 return redirect()->route('dashboard.presensi-sholat');
+            }
+            if (session('user.app') === 'approval-prestasi') {
+                return redirect()->route('approval.prestasi.index');
             }
         }
 
@@ -36,7 +40,7 @@ class AuthController extends Controller
             !empty(config('services.cloudflare_turnstile.secret_key'));
 
         $validated = $request->validate([
-            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan'],
+            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan,approval-prestasi'],
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
             'cf-turnstile-response' => [$turnstileEnabled ? 'required' : 'nullable', 'string'],
@@ -56,8 +60,70 @@ class AuthController extends Controller
         if ($validated['app'] === 'aplikasi-laporan') {
             return $this->loginLaporan($validated);
         }
+        if ($validated['app'] === 'approval-prestasi') {
+            return $this->loginApprovalPrestasi($request, $validated);
+        }
 
         return $this->loginPresensiSholat($request, $validated);
+    }
+
+    private function loginApprovalPrestasi(Request $request, array $validated)
+    {
+        $username = trim($validated['username']);
+        $password = $validated['password'];
+
+        try {
+            $user = DB::table('user_prestasi')
+                ->whereRaw('LOWER(TRIM(username)) = ?', [strtolower($username)])
+                ->first();
+        } catch (\Throwable $e) {
+            Log::error('Approval prestasi login DB failed', ['message' => $e->getMessage()]);
+            return back()
+                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
+                ->with('login_error', 'Tidak dapat terhubung ke database. Silakan coba lagi.');
+        }
+
+        if (! $user || ! $this->verifyPrestasiPassword($password, (string) ($user->password ?? ''))) {
+            return back()
+                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
+                ->with('login_error', 'Username atau password salah.');
+        }
+
+        $role = strtolower(trim((string) ($user->role ?? '')));
+        if ($role === '' || $role === 'siswa') {
+            return back()
+                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
+                ->with('login_error', 'Akun ini tidak memiliki akses Approval Prestasi.');
+        }
+
+        $request->session()->put('user', [
+            'username' => (string) ($user->username ?? $username),
+            'nama' => (string) ($user->nama ?? $username),
+            'role' => (string) ($user->role ?? ''),
+            'code01' => trim((string) ($user->code01 ?? '')),
+            'app' => 'approval-prestasi',
+        ]);
+
+        return redirect()->route('approval.prestasi.index');
+    }
+
+    private function verifyPrestasiPassword(string $password, string $stored): bool
+    {
+        $stored = trim($stored);
+        if ($stored === '') {
+            return false;
+        }
+
+        $info = password_get_info($stored);
+        if (($info['algo'] ?? null) !== null) {
+            return password_verify($password, $stored);
+        }
+
+        $lower = strtolower($stored);
+        return hash_equals($lower, sha1($password))
+            || hash_equals($lower, hash('sha256', $password))
+            || hash_equals($lower, md5($password))
+            || hash_equals($stored, $password);
     }
 
     private function loginLaporan(array $validated)

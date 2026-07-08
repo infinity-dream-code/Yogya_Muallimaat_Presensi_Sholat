@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ApprovalPrestasiController;
 use App\Http\Controllers\PresensiSholatController;
 use Illuminate\Support\Facades\Route;
 
@@ -23,6 +24,9 @@ Route::middleware(['check.auth'])->group(function () {
     Route::get('/dashboard-presensi-sholat', function () {
         return view('dashboard_presensi_sholat');
     })->name('dashboard.presensi-sholat');
+
+    Route::get('/approval-prestasi', [ApprovalPrestasiController::class, 'index'])->name('approval.prestasi.index');
+    Route::post('/approval-prestasi/action', [ApprovalPrestasiController::class, 'action'])->name('approval.prestasi.action');
 
     Route::get('/presensi-sholat/qr', [PresensiSholatController::class, 'showQr'])->name('presensi-sholat.qr');
     Route::post('/presensi-sholat/post-sholat', [PresensiSholatController::class, 'postSholat'])->name('presensi-sholat.post-sholat');
