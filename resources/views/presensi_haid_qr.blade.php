@@ -41,40 +41,41 @@
         .drawer {
             position: fixed;
             top: 0; left: 0;
-            width: 272px; height: 100%;
-            background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
-            color: #f9fafb;
+            width: 280px; height: 100%;
+            background: linear-gradient(180deg, #1e1b4b 0%, #0f0d1e 100%);
+            color: #e2e8f0;
             transform: translateX(-100%);
             transition: transform 0.2s ease;
             padding: 24px 20px;
             display: flex;
             flex-direction: column;
             z-index: 40;
-            border-right: 1px solid rgba(255,255,255,0.06);
-            box-shadow: 4px 0 24px rgba(0,0,0,0.2);
+            border-right: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 8px 0 32px rgba(0,0,0,0.2);
         }
         .drawer.open { transform: translateX(0); }
         .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
         .drawer-header { display: flex; align-items: center; margin-bottom: 20px; }
-        .drawer-logo { width: 50px; height: 50px; border-radius: 999px; overflow: hidden; margin-right: 10px; }
+        .drawer-logo { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; margin-right: 12px; flex-shrink: 0; }
         .drawer-logo img { width: 100%; height: 100%; object-fit: contain; }
-        .drawer-user-name { font-size: 0.95rem; font-weight: 600; }
-        .drawer-user-role { font-size: 0.78rem; opacity: 0.75; }
-        .drawer-divider { height: 1px; background: #4b5563; margin: 16px 0; }
+        .drawer-user-name { font-size: 0.95rem; font-weight: 600; color: #f8fafc; }
+        .drawer-user-role { font-size: 0.78rem; color: #94a3b8; }
+        .drawer-divider { height: 1px; background: rgba(255,255,255,0.1); margin: 16px 0; }
         .drawer-menu { list-style: none; padding: 0; margin: 0; flex: 1; }
-        .drawer-menu-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: #94a3b8; margin-bottom: 10px; padding-left: 14px; }
-        .drawer-item { margin-bottom: 12px; }
+        .drawer-menu-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; margin-bottom: 10px; padding-left: 14px; font-weight: 600; }
+        .drawer-item { margin-bottom: 4px; }
         .drawer-link {
             display: flex; align-items: center;
-            padding: 12px 14px; border-radius: 999px;
-            color: inherit; text-decoration: none;
-            font-size: 0.9rem; transition: background 0.15s ease;
+            padding: 12px 14px; border-radius: 12px;
+            color: #cbd5e1; text-decoration: none;
+            font-size: 0.9rem; font-weight: 500; transition: all 0.2s ease;
         }
-        .drawer-link span.icon { width: 26px; display: inline-flex; justify-content: center; align-items: center; margin-right: 12px; }
-        .drawer-link span.icon i { font-size: 1.05rem; color: #e2e8f0 !important; }
-        .drawer-link:hover { background: rgba(148,163,184,0.18); }
-        .drawer-link.active { background: rgba(148,163,184,0.15); }
-        .drawer-footer { font-size: 0.78rem; opacity: 0.7; margin-top: 12px; }
+        .drawer-link span.icon { width: 24px; display: inline-flex; justify-content: center; align-items: center; margin-right: 12px; color: #94a3b8; }
+        .drawer-link span.icon i { font-size: 1.05rem; color: inherit !important; }
+        .drawer-link:hover { background: rgba(255,255,255,0.08); color: #f8fafc; }
+        .drawer-link.active { background: linear-gradient(135deg, rgba(124,58,237,0.3) 0%, rgba(109,40,217,0.2) 100%); color: #e9d5ff; }
+        .drawer-link.active span.icon { color: #c4b5fd; }
+        .drawer-footer { font-size: 0.75rem; color: #64748b; margin-top: auto; padding-top: 16px; }
         .header { display: flex; align-items: center; padding: 16px 16px 10px; justify-content: space-between; }
         .left-header { display: flex; align-items: center; gap: 12px; }
         .burger { width: 28px; border: none; background: transparent; padding: 0; cursor: pointer; }
@@ -215,7 +216,7 @@
         }
         @media (min-width: 960px) {
             body { justify-content: flex-start; }
-            .app { max-width: none; width: calc(100% - 272px); margin-left: 272px; }
+            .app { max-width: none; width: calc(100% - 280px); margin-left: 280px; }
             .drawer { position: fixed; transform: translateX(0); }
             .drawer-backdrop { display: none; }
             .burger { display: none; }
