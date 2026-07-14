@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
@@ -632,36 +633,8 @@ class PresensiSholatController extends Controller
         $perPage = min(100, max(20, (int) $request->query('per_page', 50)));
         $search  = trim((string) $request->query('search', ''));
 
-        $cacheKey = 'rekap_sholat_' . $username . '_' . $bulan;
-        $all      = \Illuminate\Support\Facades\Cache::remember($cacheKey, 180, function () use ($username, $bulan) {
-            $payload = [
-                'METHOD'  => 'RekapRequest',
-                'USERNAME' => $username,
-                'BULAN'   => $bulan,
-            ];
-
-            $token = $this->generateJwt($payload);
-            $list  = [];
-
-            try {
-                $response = Http::timeout(25)
-                    ->get(self::API_BASE_URL_PRESENSI_SHOLAT . '?token=' . urlencode($token));
-
-                if ($response->ok()) {
-                    $data = $response->json();
-                    if (is_array($data)) {
-                        $list = $data['datas'] ?? $data;
-                        if (! is_array($list)) {
-                            $list = [];
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::error('RekapSholat data error', ['message' => $e->getMessage()]);
-            }
-
-            return $list;
-        });
+        $all = $this->enrichRekapWithSekolah($this->fetchRekapSholatList($username, $bulan));
+        $units = $this->collectRekapUnits($all);
 
         if ($search !== '') {
             $q   = mb_strtolower($search);
@@ -683,6 +656,7 @@ class PresensiSholatController extends Controller
             'page'    => $page,
             'total'   => $total,
             'hasMore' => $hasMore,
+            'units'   => $page === 1 ? $units : [],
         ])->render();
 
         return response($html, 200, [
@@ -704,37 +678,7 @@ class PresensiSholatController extends Controller
         }
 
         $bulan = $request->query('bulan', now()->format('Y-m'));
-
-        $cacheKey = 'rekap_sholat_' . $username . '_' . $bulan;
-
-        $all = Cache::remember($cacheKey, 180, function () use ($username, $bulan) {
-            $payload = [
-                'METHOD' => 'RekapRequest',
-                'USERNAME' => $username,
-                'BULAN' => $bulan,
-            ];
-
-            $token = $this->generateJwt($payload);
-            $list = [];
-
-            try {
-                $response = Http::timeout(25)->get(self::API_BASE_URL_PRESENSI_SHOLAT . '?token=' . urlencode($token));
-
-                if ($response->ok()) {
-                    $data = $response->json();
-                    if (is_array($data)) {
-                        $list = $data['datas'] ?? $data;
-                        if (! is_array($list)) {
-                            $list = [];
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::error('RekapSholat export data error', ['message' => $e->getMessage()]);
-            }
-
-            return $list;
-        });
+        $all = $this->enrichRekapWithSekolah($this->fetchRekapSholatList($username, $bulan));
 
         if (empty($all)) {
             return redirect()
@@ -764,37 +708,7 @@ class PresensiSholatController extends Controller
         }
 
         $bulan = $request->query('bulan', now()->format('Y-m'));
-
-        $cacheKey = 'rekap_sholat_' . $username . '_' . $bulan;
-        $all      = \Illuminate\Support\Facades\Cache::remember($cacheKey, 180, function () use ($username, $bulan) {
-            $payload = [
-                'METHOD'  => 'RekapRequest',
-                'USERNAME' => $username,
-                'BULAN'   => $bulan,
-            ];
-
-            $token = $this->generateJwt($payload);
-            $list  = [];
-
-            try {
-                $response = Http::timeout(25)
-                    ->get(self::API_BASE_URL_PRESENSI_SHOLAT . '?token=' . urlencode($token));
-
-                if ($response->ok()) {
-                    $data = $response->json();
-                    if (is_array($data)) {
-                        $list = $data['datas'] ?? $data;
-                        if (! is_array($list)) {
-                            $list = [];
-                        }
-                    }
-                }
-            } catch (\Throwable $e) {
-                Log::error('RekapSholat pdf data error', ['message' => $e->getMessage()]);
-            }
-
-            return $list;
-        });
+        $all = $this->enrichRekapWithSekolah($this->fetchRekapSholatList($username, $bulan));
 
         if (empty($all)) {
             return redirect()
@@ -1054,6 +968,187 @@ class PresensiSholatController extends Controller
     {
         return isset($e['NamaCust']) || isset($e['NAMA']) || isset($e['NAMASISWA'])
             || isset($e['NOCUST']) || isset($e['nocust']) || isset($e['NIS']) || isset($e['NOKARTU']);
+    }
+
+    private function fetchRekapSholatList(string $username, string $bulan): array
+    {
+        $cacheKey = 'rekap_sholat_' . $username . '_' . $bulan;
+
+        return Cache::remember($cacheKey, 180, function () use ($username, $bulan) {
+            $payload = [
+                'METHOD' => 'RekapRequest',
+                'USERNAME' => $username,
+                'BULAN' => $bulan,
+            ];
+
+            $token = $this->generateJwt($payload);
+            $list = [];
+
+            try {
+                $response = Http::timeout(25)
+                    ->get(self::API_BASE_URL_PRESENSI_SHOLAT . '?token=' . urlencode($token));
+
+                if ($response->ok()) {
+                    $data = $response->json();
+                    if (is_array($data)) {
+                        $list = $data['datas'] ?? $data;
+                        if (! is_array($list)) {
+                            $list = [];
+                        }
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::error('RekapSholat data error', ['message' => $e->getMessage()]);
+            }
+
+            return $list;
+        });
+    }
+
+    /**
+     * Samakan UNIT dengan mst_sekolah via CODE01 (scctcust), hilangkan duplikat case seperti MTS/MTs.
+     */
+    private function enrichRekapWithSekolah(array $entries): array
+    {
+        if ($entries === []) {
+            return $entries;
+        }
+
+        $sekolahByCode = [];
+        $sekolahByDesc = [];
+        try {
+            foreach (DB::table('mst_sekolah')->select('CODE01', 'DESC01')->get() as $row) {
+                $code = trim((string) ($row->CODE01 ?? ''));
+                $desc = trim((string) ($row->DESC01 ?? ''));
+                if ($code === '') {
+                    continue;
+                }
+                $sekolahByCode[$code] = $desc !== '' ? $desc : $code;
+                if ($desc !== '') {
+                    $sekolahByDesc[mb_strtoupper($desc)] = [
+                        'code01' => $code,
+                        'sekolah' => $desc,
+                    ];
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('RekapSholat mst_sekolah lookup failed', ['message' => $e->getMessage()]);
+        }
+
+        $nocusts = [];
+        foreach ($entries as $entry) {
+            if (! is_array($entry) || ! $this->isRekapStudentRecord($entry)) {
+                continue;
+            }
+            $nocust = trim((string) ($entry['NOCUST'] ?? $entry['nocust'] ?? $entry['NIS'] ?? $entry['nis'] ?? ''));
+            if ($nocust !== '') {
+                $nocusts[] = $nocust;
+            }
+        }
+        $nocusts = array_values(array_unique($nocusts));
+
+        $byNocust = [];
+        if ($nocusts !== []) {
+            try {
+                foreach (array_chunk($nocusts, 500) as $chunk) {
+                    $rows = DB::table('scctcust as sc')
+                        ->leftJoin('mst_sekolah as ms', 'ms.CODE01', '=', 'sc.CODE01')
+                        ->whereIn(DB::raw('TRIM(sc.NOCUST)'), $chunk)
+                        ->selectRaw('TRIM(sc.NOCUST) as nocust, TRIM(sc.CODE01) as code01, TRIM(ms.DESC01) as sekolah')
+                        ->get();
+
+                    foreach ($rows as $row) {
+                        $nocust = trim((string) ($row->nocust ?? ''));
+                        $code01 = trim((string) ($row->code01 ?? ''));
+                        if ($nocust === '' || $code01 === '') {
+                            continue;
+                        }
+                        $sekolah = trim((string) ($row->sekolah ?? ''));
+                        if ($sekolah === '' && isset($sekolahByCode[$code01])) {
+                            $sekolah = $sekolahByCode[$code01];
+                        }
+                        $byNocust[$nocust] = [
+                            'code01' => $code01,
+                            'sekolah' => $sekolah !== '' ? $sekolah : $code01,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('RekapSholat scctcust lookup failed', ['message' => $e->getMessage()]);
+            }
+        }
+
+        foreach ($entries as &$entry) {
+            if (! is_array($entry) || ! $this->isRekapStudentRecord($entry)) {
+                continue;
+            }
+
+            $nocust = trim((string) ($entry['NOCUST'] ?? $entry['nocust'] ?? $entry['NIS'] ?? $entry['nis'] ?? ''));
+            $rawUnit = trim((string) ($entry['UNIT'] ?? $entry['Unit'] ?? $entry['unit'] ?? ''));
+            $code01 = trim((string) ($entry['CODE01'] ?? $entry['code01'] ?? ''));
+            $sekolah = '';
+
+            if ($nocust !== '' && isset($byNocust[$nocust])) {
+                $code01 = $byNocust[$nocust]['code01'];
+                $sekolah = $byNocust[$nocust]['sekolah'];
+            } elseif ($code01 !== '' && isset($sekolahByCode[$code01])) {
+                $sekolah = $sekolahByCode[$code01];
+            } elseif ($rawUnit !== '') {
+                $key = mb_strtoupper($rawUnit);
+                if (isset($sekolahByDesc[$key])) {
+                    $code01 = $sekolahByDesc[$key]['code01'];
+                    $sekolah = $sekolahByDesc[$key]['sekolah'];
+                } elseif (isset($sekolahByCode[$rawUnit])) {
+                    $code01 = $rawUnit;
+                    $sekolah = $sekolahByCode[$rawUnit];
+                }
+            }
+
+            if ($code01 === '' && $rawUnit !== '') {
+                // Tetap dedupe case: pakai label upper sebagai nilai filter
+                $code01 = 'UNIT:' . mb_strtoupper($rawUnit);
+                $sekolah = mb_strtoupper($rawUnit);
+            }
+
+            if ($sekolah === '') {
+                $sekolah = $rawUnit;
+            }
+
+            $entry['CODE01'] = $code01;
+            $entry['UNIT'] = $sekolah;
+            $entry['Unit'] = $sekolah;
+            $entry['unit'] = $sekolah;
+            $entry['SEKOLAH'] = $sekolah;
+        }
+        unset($entry);
+
+        return $entries;
+    }
+
+    private function collectRekapUnits(array $entries): array
+    {
+        $units = [];
+        foreach ($entries as $entry) {
+            if (! is_array($entry) || ! $this->isRekapStudentRecord($entry)) {
+                continue;
+            }
+            $code01 = trim((string) ($entry['CODE01'] ?? ''));
+            $label = trim((string) ($entry['SEKOLAH'] ?? $entry['UNIT'] ?? ''));
+            if ($code01 === '') {
+                continue;
+            }
+            if (! isset($units[$code01])) {
+                $units[$code01] = [
+                    'code01' => $code01,
+                    'label' => $label !== '' ? $label : $code01,
+                ];
+            }
+        }
+
+        $list = array_values($units);
+        usort($list, fn ($a, $b) => strcasecmp($a['label'], $b['label']));
+
+        return $list;
     }
 
     private function generateJwt(array $payload): string

@@ -10,16 +10,20 @@
         ['key' => 'BELUM_PRESENSI', 'label' => 'BELUM PRESENSI', 'class' => 'badge-belum'],
     ];
 @endphp
+@if(!empty($units) && (int) ($page ?? 1) === 1)
+    <div id="rekapUnitsMeta" data-units='@json($units)' style="display:none"></div>
+@endif
 @forelse($entries as $entry)
     @php
         $title = $entry['NamaCust'] ?? $entry['NAMA'] ?? $entry['NAMASISWA'] ?? $entry['Nama'] ?? 'Siswa';
-        $unitVal = $entry['UNIT'] ?? $entry['Unit'] ?? $entry['unit'] ?? null;
+        $unitVal = $entry['SEKOLAH'] ?? $entry['UNIT'] ?? $entry['Unit'] ?? $entry['unit'] ?? null;
+        $code01 = $entry['CODE01'] ?? $entry['code01'] ?? '';
         $nisVal = $entry['NOCUST'] ?? $entry['nocust'] ?? $entry['NIS'] ?? $entry['NOKARTU'] ?? $entry['nis'] ?? '';
         $bulanParts = explode('-', $bulan);
         $bulanDisplay = count($bulanParts) >= 2 ? (int) $bulanParts[1] . '/' . $bulanParts[0] : $bulan;
         $searchText = strtolower($title . ' ' . $nisVal);
     @endphp
-    <div class="card card-rekap card-rekap-student" data-search="{{ $searchText }}" data-unit="{{ $unitVal ?? '' }}">
+    <div class="card card-rekap card-rekap-student" data-search="{{ $searchText }}" data-unit="{{ $code01 }}" data-unit-label="{{ $unitVal ?? '' }}">
         <div class="card-header">
             <div>
                 <div class="card-title">{{ strtoupper($title) }}</div>

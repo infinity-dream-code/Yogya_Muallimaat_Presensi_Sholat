@@ -270,6 +270,7 @@
                     if (oldLm) oldLm.remove();
                     if (loadMore) list.appendChild(loadMore.cloneNode(true));
                 } else {
+                    unitCatalog = null;
                     list.innerHTML = html;
                 }
                 currentBulan = bulan;
@@ -292,25 +293,54 @@
             })
             .finally(function () { if (!append) hideLoader(); });
     }
+    var unitCatalog = null;
+
     function updateUnitOptions() {
-        var units = new Set();
-        document.querySelectorAll('.card-rekap-student[data-unit]').forEach(function (c) {
-            var u = (c.dataset.unit || '').trim();
-            if (u) units.add(u);
-        });
+        var meta = document.getElementById('rekapUnitsMeta');
+        if (meta && meta.dataset.units) {
+            try {
+                unitCatalog = JSON.parse(meta.dataset.units) || [];
+            } catch (e) {
+                unitCatalog = null;
+            }
+        }
+
+        var map = {};
+        if (Array.isArray(unitCatalog) && unitCatalog.length) {
+            unitCatalog.forEach(function (u) {
+                var code = String((u && u.code01) || '').trim();
+                var label = String((u && u.label) || code).trim();
+                if (code) map[code] = label || code;
+            });
+        } else {
+            document.querySelectorAll('.card-rekap-student[data-unit]').forEach(function (c) {
+                var code = (c.dataset.unit || '').trim();
+                var label = (c.dataset.unitLabel || code).trim();
+                if (code) map[code] = label || code;
+            });
+        }
+
         var sel = document.getElementById('unitSelect');
         if (!sel) return;
-        var idx = sel.selectedIndex;
+        var prev = sel.value;
         var opts = sel.querySelectorAll('option');
         for (var i = opts.length - 1; i >= 1; i--) opts[i].remove();
-        var arr = Array.from(units).sort();
-        arr.forEach(function (u) {
+
+        Object.keys(map).sort(function (a, b) {
+            return String(map[a]).localeCompare(String(map[b]), 'id', { sensitivity: 'base' });
+        }).forEach(function (code) {
             var opt = document.createElement('option');
-            opt.value = u;
-            opt.textContent = u;
+            opt.value = code;
+            opt.textContent = map[code];
             sel.appendChild(opt);
         });
-        sel.selectedIndex = 0;
+
+        if (prev && map[prev]) {
+            sel.value = prev;
+        } else {
+            sel.selectedIndex = 0;
+        }
+        doFilter();
     }
     function doFilter() {
         var unit = (document.getElementById('unitSelect') || {}).value || '';
