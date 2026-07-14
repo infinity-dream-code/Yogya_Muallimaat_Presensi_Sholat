@@ -335,7 +335,6 @@ class AuthController extends Controller
     public function gantiPassword(Request $request)
     {
         $validated = $request->validate([
-            'old_password' => ['required', 'string'],
             'new_password' => ['required', 'string', 'min:3'],
             'confirm_password' => ['required', 'string', 'same:new_password'],
         ]);
@@ -347,12 +346,9 @@ class AuthController extends Controller
 
         $apiBaseUrl = self::API_BASE_URL_PRESENSI_SHOLAT;
 
-        $oldPassword = $validated['old_password'];
-
         $payload = [
             'METHOD'       => 'RequestNewPassword',
             'USERNAME'     => $username,
-            'PASSWORD'     => $oldPassword,
             'NEWPASSWORD'  => $validated['new_password'],
             'NEWPASSWORD2' => $validated['confirm_password'],
         ];
@@ -430,7 +426,7 @@ class AuthController extends Controller
                         $errorMsg .= ' ' . substr($body, 0, 150);
                     }
                 } else {
-                    $errorMsg = 'Server API mengembalikan error tanpa pesan. Kemungkinan: password lama salah, endpoint tidak tersedia, atau server bermasalah. Silakan coba lagi atau hubungi administrator.';
+                    $errorMsg = 'Server API mengembalikan error tanpa pesan. Silakan coba lagi atau hubungi administrator.';
                 }
 
                 Log::error('Ganti password failed', [
@@ -441,7 +437,7 @@ class AuthController extends Controller
                 ]);
 
                 return back()
-                    ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
+                    ->withInput($request->except(['new_password', 'confirm_password']))
                     ->with('password_error', $errorMsg);
             }
 
@@ -455,7 +451,7 @@ class AuthController extends Controller
 
             $message = $data['PesanRespon'] ?? 'Gagal mengubah password.';
             return back()
-                ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
+                ->withInput($request->except(['new_password', 'confirm_password']))
                 ->with('password_error', $message);
 
         } catch (\Throwable $e) {
@@ -463,7 +459,7 @@ class AuthController extends Controller
                 'message' => $e->getMessage(),
             ]);
             return back()
-                ->withInput($request->except(['old_password', 'new_password', 'confirm_password']))
+                ->withInput($request->except(['new_password', 'confirm_password']))
                 ->with('password_error', 'Tidak dapat terhubung ke server. Silakan coba lagi.');
         }
     }

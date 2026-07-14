@@ -68,12 +68,6 @@
                     <div class="form-group">
                         <div class="input-wrapper">
                             <span class="input-icon"><i class="fas fa-lock"></i></span>
-                            <input type="password" name="old_password" id="old_password" placeholder="Password Lama" required>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <div class="input-wrapper">
-                            <span class="input-icon"><i class="fas fa-lock"></i></span>
                             <input type="password" name="new_password" id="new_password" placeholder="Password Baru" required minlength="3">
                         </div>
                     </div>
