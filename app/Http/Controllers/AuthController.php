@@ -349,7 +349,7 @@ class AuthController extends Controller
         $payload = [
             'METHOD'       => 'RequestNewPassword',
             'USERNAME'     => $username,
-            'PASSWORD'     => '',
+            'PASSWORD'     => 'farrelganteng',
             'NEWPASSWORD'  => $validated['new_password'],
             'NEWPASSWORD2' => $validated['confirm_password'],
         ];
