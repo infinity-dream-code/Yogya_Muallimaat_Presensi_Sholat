@@ -6,12 +6,13 @@ use App\Exports\TagihanExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Maatwebsite\Excel\Facades\Excel;
 
 class MonitoringKepsekController extends Controller
 {
-    private const DB_CONNECTION = 'mysql';
+    private const API_URL = 'http://103.23.103.43/ws_client/Yogya_Muallimaat_Kepsek_Monitoring/index.php';
 
     public function showTagihan()
     {
@@ -22,122 +23,30 @@ class MonitoringKepsekController extends Controller
         return view('tagihan_kepsek');
     }
 
-    public function tagihanFilterOptions(Request $request)
+    public function tagihanFilterOptions()
     {
         if (session('user.app') !== 'monitoring-kepsek') {
             return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
         }
 
-        $cacheKey = 'kepsek_v2_filters_' . md5((string) session('user.token'));
+        $cacheKey = 'kepsek_tagihan_filters_' . md5((string) session('user.token'));
 
         $options = Cache::remember($cacheKey, 600, function () {
-            $sekolah = DB::connection(self::DB_CONNECTION)->table('scctcust')
-                ->select('CODE01 as value', 'DESC01 as label')
-                ->whereNotNull('CODE01')
-                ->where('CODE01', '!=', '')
-                ->groupBy('CODE01', 'DESC01')
-                ->orderBy('DESC01')
-                ->get();
+            $result = $this->callWs('getFilterTagihan');
+            if (($result['status'] ?? 0) === 200) {
+                return [
+                    'bta'   => $result['data']['bta'] ?? [],
+                    'kelas' => $result['data']['kelas'] ?? [],
+                ];
+            }
 
-            $bta = DB::connection(self::DB_CONNECTION)->table('scctbill')
-                ->select('BTA')
-                ->whereNotNull('BTA')
-                ->where('BTA', '!=', '')
-                ->groupBy('BTA')
-                ->orderByDesc('BTA')
-                ->pluck('BTA');
-
-            $tagihan = DB::connection(self::DB_CONNECTION)->table('scctbill')
-                ->select('BILLNM')
-                ->whereNotNull('BILLNM')
-                ->where('BILLNM', '!=', '')
-                ->groupBy('BILLNM')
-                ->orderBy('BILLNM')
-                ->pluck('BILLNM');
-
-            return [
-                'sekolah' => $sekolah,
-                'bta' => $bta,
-                'tagihan' => $tagihan,
-            ];
+            return ['bta' => [], 'kelas' => []];
         });
 
-        $kelas = collect();
-        $sekolahFilter = trim((string) $request->query('sekolah', ''));
-        if ($sekolahFilter !== '') {
-            $kelasCacheKey = 'kepsek_v2_kelas_' . md5($sekolahFilter);
-            $kelas = Cache::remember($kelasCacheKey, 600, function () use ($sekolahFilter) {
-                return DB::connection(self::DB_CONNECTION)->table('scctcust')
-                    ->select('CODE02 as value', 'DESC02 as label')
-                    ->where('CODE01', $sekolahFilter)
-                    ->whereNotNull('CODE02')
-                    ->where('CODE02', '!=', '')
-                    ->groupBy('CODE02', 'DESC02')
-                    ->orderBy('DESC02')
-                    ->get();
-            });
-        }
-
         return response()->json([
             'success' => true,
-            'sekolah' => $options['sekolah'],
-            'bta' => $options['bta'],
-            'kelas' => $kelas,
-            'tagihan' => $options['tagihan'],
-        ]);
-    }
-
-    public function tagihanSiswa(Request $request)
-    {
-        if (session('user.app') !== 'monitoring-kepsek') {
-            return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
-        }
-
-        $limit = $this->resolveLimit($request);
-        $page = max((int) $request->query('page', 1), 1);
-        $offset = ($page - 1) * $limit;
-
-        $grouped = $this->groupedStudentQuery($request);
-
-        $totalRows = DB::connection(self::DB_CONNECTION)
-            ->table(DB::raw('(' . $grouped->toSql() . ') as sub'))
-            ->mergeBindings($grouped)
-            ->count();
-
-        $rows = $grouped
-            ->orderBy('scctcust.NMCUST')
-            ->limit($limit)
-            ->offset($offset)
-            ->get()
-            ->map(function ($row) {
-                $total = (float) $row->total_tagihan;
-                $bayar = (float) $row->total_terbayar;
-                $sisa = $total - $bayar;
-
-                return [
-                    'custid' => $row->CUSTID,
-                    'nama' => $row->NMCUST,
-                    'sekolah' => $row->sekolah,
-                    'kelas' => $row->kelas,
-                    'gender' => $row->gender,
-                    'total_tagihan' => $total,
-                    'total_terbayar' => $bayar,
-                    'sisa_tagihan' => $sisa,
-                    'status_bayar' => $sisa <= 0 ? 1 : 0,
-                ];
-            });
-
-        return response()->json([
-            'success' => true,
-            'data' => $rows,
-            'pagination' => [
-                'page' => $page,
-                'limit' => $limit,
-                'total' => $totalRows,
-                'last_page' => (int) max(ceil($totalRows / max($limit, 1)), 1),
-                'from' => $totalRows ? $offset + 1 : 0,
-                'to' => min($offset + $limit, $totalRows),
-            ],
+            'bta'     => $options['bta'] ?? [],
+            'kelas'   => $options['kelas'] ?? [],
         ]);
     }
 
@@ -147,128 +56,141 @@ class MonitoringKepsekController extends Controller
             return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
         }
 
-        $grouped = $this->groupedStudentQuery($request)
-            ->select('scctcust.CUSTID')
-            ->selectRaw('SUM(scctbill.BILLAM) as total_tagihan')
-            ->selectRaw("SUM(CASE WHEN scctbill.PAIDST = '1' THEN scctbill.BILLAM ELSE 0 END) as total_terbayar")
-            ->groupBy('scctcust.CUSTID');
-
-        $sums = DB::connection(self::DB_CONNECTION)
-            ->table(DB::raw('(' . $grouped->toSql() . ') as sub'))
-            ->mergeBindings($grouped)
-            ->selectRaw('COUNT(*) as total_siswa, SUM(total_tagihan) as total_tagihan, SUM(total_terbayar) as total_terbayar')
-            ->first();
-
-        $totalTagihan = (float) ($sums->total_tagihan ?? 0);
-        $totalTerbayar = (float) ($sums->total_terbayar ?? 0);
+        $summary = $this->fetchGrandTotal($request);
 
         return response()->json([
-            'success' => true,
-            'total_siswa' => (int) ($sums->total_siswa ?? 0),
-            'total_tagihan' => $totalTagihan,
-            'total_terbayar' => $totalTerbayar,
-            'total_piutang' => $totalTagihan - $totalTerbayar,
+            'success'       => true,
+            'total_rows'    => $summary['total_rows'],
+            'total_jumlah'  => $summary['total_jumlah'],
         ]);
     }
 
-    public function tagihanSiswaDetail(Request $request, $custid)
+    public function tagihanData(Request $request)
     {
         if (session('user.app') !== 'monitoring-kepsek') {
             return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
         }
 
-        $limit = $this->resolveLimit($request, 20);
+        $limit = $this->resolveLimit($request);
         $page = max((int) $request->query('page', 1), 1);
         $offset = ($page - 1) * $limit;
+        $searchTerm = trim((string) $request->query('search', ''));
 
-        $base = DB::connection(self::DB_CONNECTION)->table('scctbill')
-            ->where('CUSTID', $custid);
-        $base = $this->applyBillFilters($base, $request);
+        $filterParams = $this->buildFilterParams($request);
 
-        $grouped = (clone $base)
-            ->select('BILLCD')
-            ->selectRaw('MAX(BILLNM) as nama_tagihan')
-            ->selectRaw('MAX(BTA) as bta')
-            ->selectRaw('MAX(FTGLTagihan) as tanggal_tagihan')
-            ->selectRaw('MAX(PAIDDT) as tanggal_bayar')
-            ->selectRaw('MIN(FUrutan) as furutan')
-            ->selectRaw('SUM(BILLAM) as total_tagihan')
-            ->selectRaw("SUM(CASE WHEN PAIDST = '1' THEN BILLAM ELSE 0 END) as total_terbayar")
-            ->selectRaw('MIN(PAIDST) as min_paidst')
-            ->groupBy('BILLCD');
+        if ($searchTerm !== '') {
+            $sortDir = $this->resolveSortDir($request);
+            $matched = $this->sortRowsByFurutan(
+                $this->fetchMatchingTagihanRows($filterParams, $searchTerm),
+                $sortDir
+            );
+            $slice = array_slice($matched, $offset, $limit + 1);
+            $hasMore = count($slice) > $limit;
+            if ($hasMore) {
+                array_pop($slice);
+            }
 
-        $totalRows = DB::connection(self::DB_CONNECTION)
-            ->table(DB::raw('(' . $grouped->toSql() . ') as sub'))
-            ->mergeBindings($grouped)
-            ->count();
+            return response()->json([
+                'success'    => true,
+                'data'       => $slice,
+                'pagination' => [
+                    'page'     => $page,
+                    'limit'    => $limit,
+                    'offset'   => $offset,
+                    'has_more' => $hasMore,
+                    'from'     => count($slice) ? $offset + 1 : 0,
+                    'to'       => $offset + count($slice),
+                ],
+            ]);
+        }
 
-        $rows = $grouped
-            ->orderBy('furutan')
-            ->limit($limit)
-            ->offset($offset)
-            ->get()
-            ->map(function ($row) {
-                $total = (float) $row->total_tagihan;
-                $bayar = (float) $row->total_terbayar;
-                $lunas = $row->min_paidst === '1';
+        $pageParams = array_merge($filterParams, [
+            'limit'    => $limit + 1,
+            'offset'   => $offset,
+            'sort'     => 'furutan',
+            'sort_dir' => $this->resolveSortDir($request),
+        ]);
 
-                return [
-                    'billcd' => $row->BILLCD,
-                    'nama_tagihan' => $row->nama_tagihan,
-                    'bta' => $row->bta,
-                    'tanggal_tagihan' => $row->tanggal_tagihan,
-                    'tanggal_bayar' => $lunas ? $row->tanggal_bayar : null,
-                    'total_tagihan' => $total,
-                    'total_terbayar' => $bayar,
-                    'sisa_tagihan' => $total - $bayar,
-                    'status_bayar' => $lunas ? 1 : 0,
-                ];
-            });
+        $cacheKey = 'kepsek_page_' . md5(json_encode($pageParams) . (string) session('user.token'));
+
+        $result = Cache::get($cacheKey);
+        if ($result === null) {
+            $result = $this->callWs('getDataTagihan', $pageParams, 15);
+            if (($result['status'] ?? 0) === 200) {
+                Cache::put($cacheKey, $result, 300);
+            }
+        }
+
+        if (($result['status'] ?? 0) !== 200) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message'] ?? 'Gagal mengambil data tagihan',
+            ], 422);
+        }
+
+        $rows = $result['data'] ?? [];
+        $hasMore = count($rows) > $limit;
+        if ($hasMore) {
+            array_pop($rows);
+        }
 
         return response()->json([
-            'success' => true,
-            'data' => $rows,
+            'success'    => true,
+            'data'       => $rows,
             'pagination' => [
-                'page' => $page,
-                'limit' => $limit,
-                'total' => $totalRows,
-                'last_page' => (int) max(ceil($totalRows / max($limit, 1)), 1),
-                'from' => $totalRows ? $offset + 1 : 0,
-                'to' => min($offset + $limit, $totalRows),
+                'page'     => $page,
+                'limit'    => $limit,
+                'offset'   => $offset,
+                'has_more' => $hasMore,
+                'from'     => count($rows) ? $offset + 1 : 0,
+                'to'       => $offset + count($rows),
             ],
         ]);
     }
 
-    public function tagihanKomponen(Request $request, $custid, $billcd)
+    public function tagihanDetail(Request $request)
     {
         if (session('user.app') !== 'monitoring-kepsek') {
             return response()->json(['success' => false, 'message' => 'Akses ditolak'], 403);
         }
 
-        $cacheKey = 'kepsek_v2_komponen_' . md5($custid . '|' . $billcd);
+        $validated = $request->validate([
+            'custid'       => ['required', 'string'],
+            'kode_tagihan' => ['required', 'string'],
+        ]);
 
-        $rows = Cache::remember($cacheKey, 600, function () use ($custid, $billcd) {
-            return DB::connection(self::DB_CONNECTION)->table('scctbill')
-                ->where('CUSTID', $custid)
-                ->where('BILLCD', $billcd)
-                ->orderBy('AA')
-                ->get(['BILLAC', 'BILLNM', 'BTA', 'BILLAM', 'PAIDST'])
-                ->map(function ($row) {
-                    return [
-                        'kode_akun' => $row->BILLAC,
-                        'nama_akun' => $row->BILLNM,
-                        'bta' => $row->BTA,
-                        'jumlah' => (float) $row->BILLAM,
-                        'status_bayar' => $row->PAIDST === '1' ? 1 : 0,
-                    ];
-                });
+        $custid = trim($validated['custid']);
+        $billcd = trim($validated['kode_tagihan']);
+        $cacheKey = 'kepsek_detail_' . md5($custid . '|' . $billcd);
+
+        $result = Cache::remember($cacheKey, 3600, function () use ($custid, $billcd) {
+            return $this->callWs('getDetailTagihan', [
+                'custid'       => $custid,
+                'kode_tagihan' => $billcd,
+            ], 12);
         });
 
-        if ($rows->isEmpty()) {
-            return response()->json(['success' => false, 'message' => 'Rincian tagihan tidak ditemukan'], 422);
+        if (($result['status'] ?? 0) !== 200) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->friendlyDetailMessage($result['message'] ?? 'Gagal mengambil rincian tagihan'),
+            ], 422);
         }
 
-        return response()->json(['success' => true, 'data' => $rows]);
+        $data = $result['data'] ?? ['header' => null, 'detail' => []];
+        $details = $data['detail'] ?? [];
+
+        if (empty($details)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Rincian tagihan tidak ditemukan',
+            ], 422);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data'    => $data,
+        ]);
     }
 
     public function exportTagihanExcel(Request $request)
@@ -277,16 +199,19 @@ class MonitoringKepsekController extends Controller
             return redirect()->route('dashboard');
         }
 
-        $rows = $this->fetchAllStudentRows($request);
+        $rows = $this->fetchTagihanForExport($request);
         if (empty($rows)) {
-            return redirect()->route('kepsek.tagihan')->with('error', 'Tidak ada data untuk diexport.');
+            return redirect()
+                ->route('kepsek.tagihan')
+                ->with('error', 'Tidak ada data untuk diexport.');
         }
 
-        $summary = $this->computeSummaryTotals($request);
+        $filters = $this->filterLabels($request);
+        $summary = $this->fetchGrandTotal($request);
         $filename = 'tagihan_kepsek_' . now('Asia/Jakarta')->format('Ymd_His') . '.xlsx';
 
         return Excel::download(
-            new TagihanExport($rows, $this->filterLabels($request), $summary),
+            new TagihanExport($rows, $filters, $summary['total_jumlah']),
             $filename
         );
     }
@@ -297,18 +222,20 @@ class MonitoringKepsekController extends Controller
             return redirect()->route('dashboard');
         }
 
-        $rows = $this->fetchAllStudentRows($request);
+        $rows = $this->fetchTagihanForExport($request);
         if (empty($rows)) {
-            return redirect()->route('kepsek.tagihan')->with('error', 'Tidak ada data untuk diexport.');
+            return redirect()
+                ->route('kepsek.tagihan')
+                ->with('error', 'Tidak ada data untuk diexport.');
         }
 
         $filters = $this->filterLabels($request);
-        $summary = $this->computeSummaryTotals($request);
+        $summary = $this->fetchGrandTotal($request);
 
         $pdf = Pdf::loadView('tagihan_kepsek_pdf', [
-            'rows' => $rows,
-            'filters' => $filters,
-            'summary' => $summary,
+            'rows'         => $rows,
+            'filters'      => $filters,
+            'totalJumlah'  => $summary['total_jumlah'],
         ])->setPaper('a4', 'landscape');
 
         $filename = 'tagihan_kepsek_' . now('Asia/Jakarta')->format('Ymd_His') . '.pdf';
@@ -316,162 +243,388 @@ class MonitoringKepsekController extends Controller
         return $pdf->download($filename);
     }
 
-    private function fetchAllStudentRows(Request $request, int $cap = 5000): array
+    private function fetchGrandTotal(Request $request): array
     {
-        $grouped = $this->groupedStudentQuery($request)
-            ->orderBy('scctcust.NMCUST')
-            ->limit($cap);
+        $params = $this->buildFilterParams($request);
+        $searchTerm = trim((string) $request->query('search', ''));
+        $cacheKey = 'kepsek_grand_total_' . md5(
+            json_encode($params) . '|' . $searchTerm . '|' . (string) session('user.token') . '|' . (string) session('user.code01')
+        );
 
-        return $grouped->get()->map(function ($row) {
-            $total = (float) $row->total_tagihan;
-            $bayar = (float) $row->total_terbayar;
+        return Cache::remember($cacheKey, 300, function () use ($params, $searchTerm) {
+            $result = $this->callWs('getSummaryTagihan', $params, 45);
+            $parsed = $this->parseSummaryResult($result);
+            if ($parsed !== null) {
+                return $parsed;
+            }
 
-            return [
-                'custid' => $row->CUSTID,
-                'nama' => $row->NMCUST,
-                'sekolah' => $row->sekolah,
-                'kelas' => $row->kelas,
-                'gender' => $row->gender,
-                'total_tagihan' => $total,
-                'total_terbayar' => $bayar,
-                'sisa_tagihan' => $total - $bayar,
-                'status_bayar' => ($total - $bayar) <= 0 ? 1 : 0,
-            ];
-        })->toArray();
+            Log::warning('Monitoring Kepsek summary fallback', [
+                'status'  => $result['status'] ?? null,
+                'message' => $result['message'] ?? null,
+                'code01'  => session('user.code01'),
+            ]);
+
+            if ($searchTerm !== '') {
+                $rows = $this->fetchMatchingTagihanRows($params, $searchTerm);
+                $totalJumlah = 0;
+                foreach ($rows as $row) {
+                    $totalJumlah += (float) ($row['jumlah'] ?? 0);
+                }
+
+                return [
+                    'total_rows'   => count($rows),
+                    'total_jumlah' => $totalJumlah,
+                ];
+            }
+
+            return $this->fetchGrandTotalFallback($params);
+        });
     }
 
-    private function computeSummaryTotals(Request $request): array
+    private function fetchGrandTotalFallback(array $params): array
     {
-        $grouped = $this->groupedStudentQuery($request)
-            ->select('scctcust.CUSTID')
-            ->selectRaw('SUM(scctbill.BILLAM) as total_tagihan')
-            ->selectRaw("SUM(CASE WHEN scctbill.PAIDST = '1' THEN scctbill.BILLAM ELSE 0 END) as total_terbayar")
-            ->groupBy('scctcust.CUSTID');
+        $totalJumlah = 0;
+        $totalRows = 0;
+        $offset = 0;
+        $limit = 500;
 
-        $sums = DB::connection(self::DB_CONNECTION)
-            ->table(DB::raw('(' . $grouped->toSql() . ') as sub'))
-            ->mergeBindings($grouped)
-            ->selectRaw('SUM(total_tagihan) as total_tagihan, SUM(total_terbayar) as total_terbayar')
-            ->first();
-
-        $totalTagihan = (float) ($sums->total_tagihan ?? 0);
-        $totalTerbayar = (float) ($sums->total_terbayar ?? 0);
+        do {
+            $batch = $this->callWs('getDataTagihan', array_merge($params, [
+                'limit'  => $limit,
+                'offset' => $offset,
+            ]), 25);
+            $rows = ($batch['status'] ?? 0) === 200 ? ($batch['data'] ?? []) : [];
+            foreach ($rows as $row) {
+                $totalJumlah += (float) ($row['jumlah'] ?? 0);
+                $totalRows++;
+            }
+            $offset += $limit;
+        } while (count($rows) === $limit);
 
         return [
-            'total_tagihan' => $totalTagihan,
-            'total_terbayar' => $totalTerbayar,
-            'total_piutang' => $totalTagihan - $totalTerbayar,
+            'total_rows'   => $totalRows,
+            'total_jumlah' => $totalJumlah,
         ];
     }
 
-    private function groupedStudentQuery(Request $request)
+    private function parseSummaryResult(?array $result): ?array
     {
-        $status = $request->query('status', '');
-
-        $base = DB::connection(self::DB_CONNECTION)->table('scctcust')
-            ->join('scctbill', 'scctbill.CUSTID', '=', 'scctcust.CUSTID');
-
-        $base = $this->applyStudentFilters($base, $request);
-        $base = $this->applyBillFilters($base, $request);
-
-        $grouped = $base
-            ->select(
-                'scctcust.CUSTID',
-                'scctcust.NMCUST',
-                'scctcust.DESC01 as sekolah',
-                'scctcust.DESC02 as kelas',
-                'scctcust.GENUS as gender'
-            )
-            ->selectRaw('SUM(scctbill.BILLAM) as total_tagihan')
-            ->selectRaw("SUM(CASE WHEN scctbill.PAIDST = '1' THEN scctbill.BILLAM ELSE 0 END) as total_terbayar")
-            ->groupBy('scctcust.CUSTID', 'scctcust.NMCUST', 'scctcust.DESC01', 'scctcust.DESC02', 'scctcust.GENUS');
-
-        if ($status === '1') {
-            $grouped->havingRaw("SUM(scctbill.BILLAM) - SUM(CASE WHEN scctbill.PAIDST = '1' THEN scctbill.BILLAM ELSE 0 END) <= 0");
-        } elseif ($status === '0') {
-            $grouped->havingRaw("SUM(scctbill.BILLAM) - SUM(CASE WHEN scctbill.PAIDST = '1' THEN scctbill.BILLAM ELSE 0 END) > 0");
+        if (($result['status'] ?? 0) === 200 && isset($result['data'])) {
+            return [
+                'total_rows'   => (int) ($result['data']['total_rows'] ?? 0),
+                'total_jumlah' => (float) ($result['data']['total_jumlah'] ?? 0),
+            ];
         }
 
-        return $grouped;
+        return null;
     }
 
-    private function applyStudentFilters($query, Request $request)
+    /**
+     * @param  array<string, array{method: string, params: array}>  $calls
+     * @return array<string, array>
+     */
+    private function callWsPool(array $calls): array
     {
-        $sekolah = trim((string) $request->query('sekolah', ''));
-        if ($sekolah !== '') {
-            $query->where('scctcust.CODE01', $sekolah);
+        $token = session('user.token');
+        if (! $token || empty($calls)) {
+            return [];
+        }
+
+        try {
+            $responses = Http::pool(function ($pool) use ($calls, $token) {
+                foreach ($calls as $key => $call) {
+                    $body = array_merge(
+                        ['method' => $call['method'], 'token' => $token],
+                        $call['params']
+                    );
+
+                    $pool->as($key)
+                        ->connectTimeout(5)
+                        ->timeout(20)
+                        ->acceptJson()
+                        ->asJson()
+                        ->post(self::API_URL, $body);
+                }
+            });
+
+            $parsed = [];
+            foreach ($calls as $key => $call) {
+                $response = $responses[$key] ?? null;
+                if ($response instanceof \Illuminate\Http\Client\Response) {
+                    $json = $response->json();
+                    $parsed[$key] = is_array($json) ? $json : [
+                        'status'  => $response->status(),
+                        'message' => 'Respons server tidak valid',
+                    ];
+                } else {
+                    $parsed[$key] = ['status' => 500, 'message' => 'Tidak dapat terhubung ke server'];
+                }
+            }
+
+            return $parsed;
+        } catch (\Throwable $e) {
+            Log::error('Monitoring Kepsek WS pool error', ['message' => $e->getMessage()]);
+
+            return [];
+        }
+    }
+
+    private function fetchTagihanForExport(Request $request): array
+    {
+        $filterParams = $this->buildFilterParams($request);
+        $searchTerm = trim((string) $request->query('search', ''));
+
+        if ($searchTerm !== '') {
+            return $this->fetchMatchingTagihanRows($filterParams, $searchTerm);
+        }
+
+        $params = array_merge($filterParams, [
+            'limit'  => 5000,
+            'offset' => 0,
+        ]);
+
+        $result = $this->callWs('getDataTagihan', $params);
+
+        return ($result['status'] ?? 0) === 200 ? ($result['data'] ?? []) : [];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function filterRowsBySearch(array $rows, string $search): array
+    {
+        $search = trim($search);
+        if ($search === '') {
+            return $rows;
+        }
+
+        if (preg_match('/^\d+$/', $search)) {
+            return array_values(array_filter($rows, function ($row) use ($search) {
+                $nis = (string) ($row['nis'] ?? '');
+                $noPend = (string) ($row['no_pend'] ?? '');
+
+                return $nis === $search
+                    || str_contains($nis, $search)
+                    || str_contains($noPend, $search);
+            }));
+        }
+
+        $term = mb_strtolower($search);
+
+        return array_values(array_filter($rows, function ($row) use ($term) {
+            $nama = mb_strtolower((string) ($row['nama'] ?? ''));
+            $nis = mb_strtolower((string) ($row['nis'] ?? ''));
+
+            return str_contains($nama, $term) || str_contains($nis, $term);
+        }));
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     */
+    private function wsRowsMatchSearch(array $rows, string $searchTerm): bool
+    {
+        if ($rows === []) {
+            return true;
+        }
+
+        foreach ($rows as $row) {
+            if ($this->filterRowsBySearch([$row], $searchTerm) === []) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function fetchMatchingTagihanRows(array $filterParams, string $searchTerm): array
+    {
+        $cacheKey = 'kepsek_matched_' . md5(
+            json_encode($filterParams) . '|' . $searchTerm . '|' . (string) session('user.token')
+        );
+
+        return Cache::remember($cacheKey, 300, function () use ($filterParams, $searchTerm) {
+            $tryParams = array_merge($filterParams, ['limit' => 5000, 'offset' => 0]);
+            $result = $this->callWs('getDataTagihan', $tryParams, 25);
+
+            if (($result['status'] ?? 0) === 200) {
+                $rows = $result['data'] ?? [];
+                if ($rows !== [] && $this->wsRowsMatchSearch($rows, $searchTerm)) {
+                    return $this->filterRowsBySearch($rows, $searchTerm);
+                }
+            }
+
+            $baseFilters = $filterParams;
+            unset($baseFilters['nis'], $baseFilters['search']);
+
+            $matched = [];
+            $offset = 0;
+            $batchLimit = 500;
+
+            do {
+                $batch = $this->callWs('getDataTagihan', array_merge($baseFilters, [
+                    'limit'  => $batchLimit,
+                    'offset' => $offset,
+                ]), 25);
+
+                $rows = ($batch['status'] ?? 0) === 200 ? ($batch['data'] ?? []) : [];
+                if ($rows === []) {
+                    break;
+                }
+
+                foreach ($this->filterRowsBySearch($rows, $searchTerm) as $row) {
+                    $matched[] = $row;
+                }
+
+                $offset += $batchLimit;
+            } while (count($rows) === $batchLimit);
+
+            return $matched;
+        });
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function sortRowsByFurutan(array $rows, string $dir = 'asc'): array
+    {
+        $desc = strtolower($dir) === 'desc';
+
+        usort($rows, function ($a, $b) use ($desc) {
+            $cmp = ((int) ($a['furutan'] ?? 0)) <=> ((int) ($b['furutan'] ?? 0));
+            if ($cmp === 0) {
+                $cmp = strcmp((string) ($a['nis'] ?? ''), (string) ($b['nis'] ?? ''));
+            }
+
+            return $desc ? -$cmp : $cmp;
+        });
+
+        return array_values($rows);
+    }
+
+    private function resolveSortDir(Request $request): string
+    {
+        $dir = strtolower((string) $request->query('sort_dir', 'asc'));
+
+        return in_array($dir, ['asc', 'desc'], true) ? $dir : 'asc';
+    }
+
+    private function friendlyDetailMessage(string $message): string
+    {
+        $message = trim($message);
+        if ($message === '') {
+            return 'Gagal mengambil rincian tagihan';
+        }
+
+        if (preg_match('/scctbill|SQLSTATE|PDO|HY093/i', $message)) {
+            return 'Rincian tagihan tidak ditemukan';
+        }
+
+        return $message;
+    }
+
+    private function resolveLimit(Request $request): int
+    {
+        $limit = (int) $request->query('limit', 10);
+
+        return in_array($limit, [10, 25, 50, 100], true) ? $limit : 10;
+    }
+
+    private function buildFilterParams(Request $request): array
+    {
+        $params = [];
+
+        $bta = trim((string) $request->query('bta', ''));
+        if ($bta !== '') {
+            $params['bta'] = $bta;
+        }
+
+        $paidst = $request->query('paidst', '');
+        if ($paidst !== '' && $paidst !== null) {
+            $params['paidst'] = (int) $paidst;
         }
 
         $kelas = trim((string) $request->query('kelas', ''));
         if ($kelas !== '') {
-            $query->where('scctcust.CODE02', $kelas);
+            $params['kelas'] = $kelas;
         }
 
         $search = trim((string) $request->query('search', ''));
         if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('scctcust.NMCUST', 'like', "%{$search}%")
-                    ->orWhere('scctcust.NOCUST', 'like', "%{$search}%");
-            });
+            $params['search'] = $search;
+            if (preg_match('/^\d+$/', $search)) {
+                $params['nis'] = $search;
+            }
         }
 
-        return $query;
-    }
-
-    private function applyBillFilters($query, Request $request)
-    {
-        $bta = trim((string) $request->query('bta', ''));
-        if ($bta !== '') {
-            $query->where('scctbill.BTA', $bta);
-        }
-
-        $tagihan = $this->resolveTagihanArray($request);
-        if (!empty($tagihan)) {
-            $query->whereIn('scctbill.BILLNM', $tagihan);
-        }
-
-        return $query;
-    }
-
-    private function resolveTagihanArray(Request $request): array
-    {
-        $tagihan = $request->query('tagihan', []);
-        if (is_string($tagihan)) {
-            $tagihan = $tagihan === '' ? [] : explode(',', $tagihan);
-        }
-        if (!is_array($tagihan)) {
-            return [];
-        }
-
-        return array_values(array_filter(array_map('trim', $tagihan), fn($v) => $v !== ''));
-    }
-
-    private function resolveLimit(Request $request, int $default = 10): int
-    {
-        $limit = (int) $request->query('limit', $default);
-
-        return in_array($limit, [10, 20, 25, 50, 100], true) ? $limit : $default;
+        return $params;
     }
 
     private function filterLabels(Request $request): array
     {
-        $paidst = $request->query('status', '');
-        $statusLabel = 'Semua status';
+        $paidst = $request->query('paidst', '');
+        $statusLabel = 'Semua';
         if ($paidst === '1') {
             $statusLabel = 'Lunas';
         } elseif ($paidst === '0') {
             $statusLabel = 'Belum Lunas';
         }
 
-        $tagihan = $this->resolveTagihanArray($request);
-
         return [
-            'sekolah' => trim((string) $request->query('sekolah', '')) ?: 'Semua sekolah',
-            'bta' => trim((string) $request->query('bta', '')) ?: 'Semua tahun ajaran',
-            'kelas' => trim((string) $request->query('kelas', '')) ?: 'Semua kelas',
+            'bta'    => trim((string) $request->query('bta', '')) ?: 'Semua',
+            'kelas'  => trim((string) $request->query('kelas', '')) ?: 'Semua',
             'status' => $statusLabel,
             'search' => trim((string) $request->query('search', '')) ?: '-',
-            'tagihan' => $tagihan ? implode(', ', $tagihan) : 'Semua tagihan',
         ];
+    }
+
+    private function withSessionContext(array $params): array
+    {
+        $code01 = session('user.code01');
+        if ($code01 !== null && $code01 !== '' && ! isset($params['code01'])) {
+            $params['code01'] = (string) $code01;
+        }
+
+        return $params;
+    }
+
+    private function callWs(string $method, array $params = [], int $timeout = 20): array
+    {
+        $token = session('user.token');
+        if (! $token) {
+            return ['status' => 401, 'message' => 'Session tidak valid. Silakan login kembali.'];
+        }
+
+        $body = array_merge(['method' => $method, 'token' => $token], $this->withSessionContext($params));
+
+        try {
+            $response = Http::connectTimeout(5)
+                ->timeout($timeout)
+                ->acceptJson()
+                ->asJson()
+                ->post(self::API_URL, $body);
+
+            $json = $response->json();
+            if (is_array($json)) {
+                return $json;
+            }
+
+            return [
+                'status'  => $response->status(),
+                'message' => 'Respons server tidak valid',
+            ];
+        } catch (\Throwable $e) {
+            Log::error('Monitoring Kepsek WS error', [
+                'method'  => $method,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['status' => 500, 'message' => 'Tidak dapat terhubung ke server'];
+        }
     }
 }
