@@ -240,10 +240,10 @@
 
     <div class="content">
         <div class="mode-switch">
-            <button class="mode-btn active" id="modeQrBtn" type="button">QR</button>
-            <button class="mode-btn" id="modePidBtn" type="button">Kartu (PID)</button>
+            <button class="mode-btn" id="modeQrBtn" type="button">QR</button>
+            <button class="mode-btn active" id="modePidBtn" type="button">Kartu (PID)</button>
         </div>
-        <div class="scanner-wrap">
+        <div class="scanner-wrap" style="display:none">
             <video id="video" autoplay playsinline muted></video>
             <canvas id="canvas"></canvas>
             <div class="scan-overlay">
@@ -254,7 +254,7 @@
                 </div>
             </div>
         </div>
-        <div class="pid-wrap" id="pidWrap">
+        <div class="pid-wrap active" id="pidWrap">
             <div class="pid-card">
                 <div class="pid-label">Tap kartu atau input nomor kartu/PID</div>
                 <div class="pid-input-row">
@@ -264,7 +264,7 @@
                 <div class="pid-help">Tip: jika reader kartu bertipe keyboard, cukup tap kartu lalu Enter.</div>
             </div>
         </div>
-        <div class="hint" id="hint">Arahkan kamera ke QR Code</div>
+        <div class="hint" id="hint">Tempel kartu PID atau input manual.</div>
     </div>
 </div>
 
@@ -362,7 +362,7 @@
     let rafId     = null;
     let isPosting = false;
     let isScanning = false;
-    let mode = 'qr';
+    let mode = 'pid';
     let pidBuffer = '';
     let lastPidKeyAt = 0;
 
@@ -538,7 +538,7 @@
     }
 
     document.addEventListener('DOMContentLoaded', function() {
-        startScanner();
+        setMode('pid');
         modeQrBtn.addEventListener('click', function(){ setMode('qr'); });
         modePidBtn.addEventListener('click', function(){ setMode('pid'); });
         pidSubmit.addEventListener('click', submitPidInput);
