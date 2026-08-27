@@ -2,6 +2,10 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\ApprovalPrestasiController;
+use App\Http\Controllers\ApprovalAdminController;
+use App\Http\Controllers\ApprovalKatalogController;
+use App\Http\Controllers\CatatanKepribadianController;
+use App\Http\Controllers\TahfidController;
 use App\Http\Controllers\PresensiSholatController;
 use Illuminate\Support\Facades\Route;
 
@@ -27,6 +31,48 @@ Route::middleware(['check.auth'])->group(function () {
 
     Route::get('/approval-prestasi', [ApprovalPrestasiController::class, 'index'])->name('approval.prestasi.index');
     Route::post('/approval-prestasi/action', [ApprovalPrestasiController::class, 'action'])->name('approval.prestasi.action');
+    Route::get('/approval-prestasi/admin', [ApprovalAdminController::class, 'index'])->name('approval.admin.index');
+    Route::post('/approval-prestasi/admin', [ApprovalAdminController::class, 'store'])->name('approval.admin.store');
+    Route::post('/approval-prestasi/admin/update', [ApprovalAdminController::class, 'update'])->name('approval.admin.update');
+    Route::post('/approval-prestasi/admin/delete', [ApprovalAdminController::class, 'destroy'])->name('approval.admin.delete');
+    Route::get('/approval-prestasi/katalog', [ApprovalKatalogController::class, 'index'])->name('approval.katalog.index');
+    Route::post('/approval-prestasi/katalog', [ApprovalKatalogController::class, 'store'])->name('approval.katalog.store');
+    Route::post('/approval-prestasi/katalog/update', [ApprovalKatalogController::class, 'update'])->name('approval.katalog.update');
+    Route::post('/approval-prestasi/katalog/delete', [ApprovalKatalogController::class, 'destroy'])->name('approval.katalog.delete');
+
+    Route::get('/catatan-kepribadian', [CatatanKepribadianController::class, 'index'])->name('catatan.kepribadian.index');
+    Route::get('/catatan-kepribadian/tambah', [CatatanKepribadianController::class, 'create'])->name('catatan.kepribadian.create');
+    Route::get('/catatan-kepribadian/siswa', [CatatanKepribadianController::class, 'searchSiswa'])->name('catatan.kepribadian.siswa');
+    Route::get('/catatan-kepribadian/{id}/ubah', [CatatanKepribadianController::class, 'edit'])->name('catatan.kepribadian.edit')->whereNumber('id');
+    Route::post('/catatan-kepribadian', [CatatanKepribadianController::class, 'store'])->name('catatan.kepribadian.store');
+    Route::post('/catatan-kepribadian/update', [CatatanKepribadianController::class, 'update'])->name('catatan.kepribadian.update');
+    Route::post('/catatan-kepribadian/delete', [CatatanKepribadianController::class, 'destroy'])->name('catatan.kepribadian.delete');
+    Route::get('/catatan-kepribadian/admin', [ApprovalAdminController::class, 'index'])->name('catatan.admin.index');
+    Route::post('/catatan-kepribadian/admin', [ApprovalAdminController::class, 'store'])->name('catatan.admin.store');
+    Route::post('/catatan-kepribadian/admin/update', [ApprovalAdminController::class, 'update'])->name('catatan.admin.update');
+    Route::post('/catatan-kepribadian/admin/delete', [ApprovalAdminController::class, 'destroy'])->name('catatan.admin.delete');
+
+    Route::get('/tahfid', [TahfidController::class, 'index'])->name('tahfid.jadwal.index');
+    Route::get('/tahfid/jadwal/tambah', [TahfidController::class, 'create'])->name('tahfid.jadwal.create');
+    Route::get('/tahfid/jadwal/{id}/ubah', [TahfidController::class, 'edit'])->name('tahfid.jadwal.edit')->whereNumber('id');
+    Route::post('/tahfid/jadwal', [TahfidController::class, 'store'])->name('tahfid.jadwal.store');
+    Route::post('/tahfid/jadwal/update', [TahfidController::class, 'update'])->name('tahfid.jadwal.update');
+    Route::post('/tahfid/jadwal/delete', [TahfidController::class, 'destroy'])->name('tahfid.jadwal.delete');
+    Route::get('/tahfid/kelas', [TahfidController::class, 'kelas'])->name('tahfid.kelas');
+    Route::get('/tahfid/jadwal-kelas', [TahfidController::class, 'jadwalKelas'])->name('tahfid.jadwal.kelas');
+    Route::get('/tahfid/surat', [TahfidController::class, 'surat'])->name('tahfid.surat');
+    Route::get('/tahfid/siswa-cari', [TahfidController::class, 'searchSiswa'])->name('tahfid.siswa.search');
+    Route::get('/tahfid/percepatan', [TahfidController::class, 'percepatan'])->name('tahfid.percepatan.index');
+    Route::post('/tahfid/percepatan', [TahfidController::class, 'storePercepatan'])->name('tahfid.percepatan.store');
+    Route::post('/tahfid/percepatan/delete', [TahfidController::class, 'destroyPercepatan'])->name('tahfid.percepatan.delete');
+    Route::get('/tahfid/progress', [TahfidController::class, 'progress'])->name('tahfid.progress.index');
+    Route::post('/tahfid/progress', [TahfidController::class, 'saveProgress'])->name('tahfid.progress.store');
+    Route::get('/tahfid/hafalan', [TahfidController::class, 'siswa'])->name('tahfid.siswa.index');
+    Route::post('/tahfid/hafalan/setor', [TahfidController::class, 'setor'])->name('tahfid.siswa.setor');
+    Route::get('/tahfid/admin', [ApprovalAdminController::class, 'index'])->name('tahfid.admin.index');
+    Route::post('/tahfid/admin', [ApprovalAdminController::class, 'store'])->name('tahfid.admin.store');
+    Route::post('/tahfid/admin/update', [ApprovalAdminController::class, 'update'])->name('tahfid.admin.update');
+    Route::post('/tahfid/admin/delete', [ApprovalAdminController::class, 'destroy'])->name('tahfid.admin.delete');
 
     Route::get('/presensi-sholat/qr', [PresensiSholatController::class, 'showQr'])->name('presensi-sholat.qr');
     Route::post('/presensi-sholat/post-sholat', [PresensiSholatController::class, 'postSholat'])->name('presensi-sholat.post-sholat');

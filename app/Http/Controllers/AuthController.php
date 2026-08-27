@@ -22,6 +22,15 @@ class AuthController extends Controller
             if (session('user.app') === 'approval-prestasi') {
                 return redirect()->route('approval.prestasi.index');
             }
+            if (session('user.app') === 'catatan-kepribadian') {
+                return redirect()->route('catatan.kepribadian.index');
+            }
+            if (session('user.app') === 'tahfid') {
+                if (strtolower((string) session('user.role', '')) === 'siswa') {
+                    return redirect()->route('tahfid.siswa.index');
+                }
+                return redirect()->route('tahfid.jadwal.index');
+            }
         }
 
         return view('login');
@@ -39,7 +48,7 @@ class AuthController extends Controller
             !empty(config('services.cloudflare_turnstile.secret_key'));
 
         $validated = $request->validate([
-            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan,approval-prestasi'],
+            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan,approval-prestasi,catatan-kepribadian,tahfid'],
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
             'cf-turnstile-response' => [$turnstileEnabled ? 'required' : 'nullable', 'string'],
@@ -60,13 +69,19 @@ class AuthController extends Controller
             return $this->loginLaporan($validated);
         }
         if ($validated['app'] === 'approval-prestasi') {
-            return $this->loginApprovalPrestasi($request, $validated);
+            return $this->loginStaffWs($request, $validated, 'approval-prestasi', 'approval.prestasi.index', 'Approval Prestasi');
+        }
+        if ($validated['app'] === 'catatan-kepribadian') {
+            return $this->loginStaffWs($request, $validated, 'catatan-kepribadian', 'catatan.kepribadian.index', 'Catatan Kepribadian Siswi');
+        }
+        if ($validated['app'] === 'tahfid') {
+            return $this->loginTahfid($request, $validated);
         }
 
         return $this->loginPresensiSholat($request, $validated);
     }
 
-    private function loginApprovalPrestasi(Request $request, array $validated)
+    private function loginStaffWs(Request $request, array $validated, string $app, string $homeRoute, string $appLabel)
     {
         $username = trim($validated['username']);
         $password = $validated['password'];
@@ -74,11 +89,11 @@ class AuthController extends Controller
         $wsRequest = [
             'method' => 'loginApproval',
             'username' => $username,
-            // password jangan dilog
         ];
 
-        Log::info('Approval WS login request', [
+        Log::info('Staff WS login request', [
             'url' => $wsUrl,
+            'app' => $app,
             'request' => $wsRequest,
             'ip' => $request->ip(),
         ]);
@@ -90,58 +105,218 @@ class AuthController extends Controller
                 'password' => $password,
             ]);
         } catch (\Throwable $e) {
-            Log::error('Approval prestasi WS login failed', ['message' => $e->getMessage()]);
+            Log::error('Staff WS login failed', ['app' => $app, 'message' => $e->getMessage()]);
             return back()
-                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
-                ->with('login_error', 'Tidak dapat terhubung ke server approval. Silakan coba lagi.');
-        }
-
-        if (! $response->ok()) {
-            Log::warning('Approval WS login HTTP non-200', [
-                'url' => $wsUrl,
-                'status' => $response->status(),
-                'body' => substr((string) $response->body(), 0, 1000),
-                'username' => $username,
-            ]);
-            return back()
-                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
-                ->with('login_error', 'Server approval sedang bermasalah. Silakan coba lagi.');
+                ->withInput(['app' => $app, 'username' => $username])
+                ->with('login_error', 'Tidak dapat terhubung ke server. Silakan coba lagi.');
         }
 
         $payload = $response->json();
-        Log::info('Approval WS login response', [
+        if (! is_array($payload)) {
+            $payload = [];
+        }
+        $wsStatus = (int) ($payload['status'] ?? 0);
+        $wsMessage = trim((string) ($payload['message'] ?? ''));
+        $rawBody = (string) $response->body();
+
+        if ($wsStatus === 0 || $this->wsBodyLooksBroken($rawBody, $payload)) {
+            Log::warning('Staff WS login empty/invalid JSON', [
+                'url' => $wsUrl,
+                'app' => $app,
+                'status' => $response->status(),
+                'body' => substr($rawBody, 0, 1000),
+                'username' => $username,
+            ]);
+
+            return back()
+                ->withInput(['app' => $app, 'username' => $username])
+                ->with('login_error', 'Server sedang bermasalah. Unggah ulang file ws/index.php ke folder WS, lalu coba lagi.');
+        }
+
+        if (! $response->ok() || $wsStatus !== 200) {
+            Log::warning('Staff WS login HTTP non-200', [
+                'url' => $wsUrl,
+                'app' => $app,
+                'status' => $response->status(),
+                'ws_status' => $wsStatus,
+                'body' => substr((string) $response->body(), 0, 1000),
+                'username' => $username,
+            ]);
+            $message = $wsMessage !== '' ? $wsMessage : 'Username atau password salah.';
+            if ($wsStatus >= 500 && $wsMessage === '') {
+                $message = 'Server sedang bermasalah. Silakan coba lagi.';
+            }
+
+            return back()
+                ->withInput(['app' => $app, 'username' => $username])
+                ->with('login_error', $message);
+        }
+
+        Log::info('Staff WS login response', [
             'url' => $wsUrl,
+            'app' => $app,
             'status' => $response->status(),
             'json' => $payload,
             'username' => $username,
         ]);
-        $data = (is_array($payload) && isset($payload['data']) && is_array($payload['data'])) ? $payload['data'] : [];
+        $data = (isset($payload['data']) && is_array($payload['data'])) ? $payload['data'] : [];
         $token = trim((string) ($data['token'] ?? ''));
         $role = strtolower(trim((string) ($data['role'] ?? '')));
 
-        if (($payload['status'] ?? 500) !== 200 || $token === '') {
-            $message = (string) ($payload['message'] ?? 'Username atau password salah.');
+        if ($token === '') {
             return back()
-                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
-                ->with('login_error', $message);
+                ->withInput(['app' => $app, 'username' => $username])
+                ->with('login_error', $wsMessage !== '' ? $wsMessage : 'Username atau password salah.');
         }
 
-        if ($role === '' || $role === 'siswa') {
+        if (! in_array($role, ['musrifah', 'musyrifah', 'superadmin'], true)) {
             return back()
-                ->withInput(['app' => 'approval-prestasi', 'username' => $username])
-                ->with('login_error', 'Akun ini tidak memiliki akses Approval Prestasi.');
+                ->withInput(['app' => $app, 'username' => $username])
+                ->with('login_error', 'Akun ini tidak memiliki akses '.$appLabel.'.');
         }
 
         $request->session()->put('user', [
+            'userid' => trim((string) ($data['userid'] ?? '')),
             'username' => (string) ($data['username'] ?? $username),
             'nama' => (string) ($data['nama'] ?? $username),
             'role' => (string) ($data['role'] ?? ''),
             'code01' => trim((string) ($data['code01'] ?? '')),
             'approval_token' => $token,
-            'app' => 'approval-prestasi',
+            'app' => $app,
         ]);
 
-        return redirect()->route('approval.prestasi.index');
+        return redirect()->route($homeRoute);
+    }
+
+    private function wsBodyLooksBroken(string $rawBody, array $payload): bool
+    {
+        if (isset($payload['status']) || isset($payload['data'])) {
+            return false;
+        }
+        $trim = ltrim($rawBody);
+        if ($trim === '') {
+            return true;
+        }
+        if (str_starts_with($trim, '{') || str_starts_with($trim, '[')) {
+            return $payload === [];
+        }
+
+        return true;
+    }
+
+    private function loginTahfid(Request $request, array $validated)
+    {
+        $username = trim($validated['username']);
+        $password = $validated['password'];
+        $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
+
+        try {
+            $staffResponse = Http::timeout(20)->post($wsUrl, [
+                'method' => 'loginApproval',
+                'username' => $username,
+                'password' => $password,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Tahfid staff login failed', ['message' => $e->getMessage()]);
+            return back()
+                ->withInput(['app' => 'tahfid', 'username' => $username])
+                ->with('login_error', 'Tidak dapat terhubung ke server. Silakan coba lagi.');
+        }
+
+        $staffPayload = is_array($staffResponse->json()) ? $staffResponse->json() : [];
+        $staffStatus = (int) ($staffPayload['status'] ?? 0);
+        $staffData = (isset($staffPayload['data']) && is_array($staffPayload['data'])) ? $staffPayload['data'] : [];
+        $staffToken = trim((string) ($staffData['token'] ?? ''));
+        $staffRole = strtolower(trim((string) ($staffData['role'] ?? '')));
+        $staffBody = (string) $staffResponse->body();
+
+        if ($staffStatus === 0 || $this->wsBodyLooksBroken($staffBody, $staffPayload)) {
+            Log::warning('Tahfid staff login empty/invalid JSON', [
+                'status' => $staffResponse->status(),
+                'body' => substr($staffBody, 0, 1000),
+                'username' => $username,
+            ]);
+
+            return back()
+                ->withInput(['app' => 'tahfid', 'username' => $username])
+                ->with('login_error', 'Server sedang bermasalah. Unggah ulang file ws/index.php ke folder WS, lalu coba lagi.');
+        }
+
+        if ($staffResponse->ok() && $staffStatus === 200 && $staffToken !== '' && in_array($staffRole, ['musrifah', 'musyrifah', 'superadmin'], true)) {
+            $request->session()->put('user', [
+                'userid' => trim((string) ($staffData['userid'] ?? '')),
+                'username' => (string) ($staffData['username'] ?? $username),
+                'nama' => (string) ($staffData['nama'] ?? $username),
+                'role' => (string) ($staffData['role'] ?? ''),
+                'code01' => trim((string) ($staffData['code01'] ?? '')),
+                'approval_token' => $staffToken,
+                'app' => 'tahfid',
+                'user_type' => 'staff',
+            ]);
+
+            return redirect()->route('tahfid.jadwal.index');
+        }
+
+        if ($staffStatus === 403) {
+            $message = trim((string) ($staffPayload['message'] ?? ''));
+            return back()
+                ->withInput(['app' => 'tahfid', 'username' => $username])
+                ->with('login_error', $message !== '' ? $message : 'Akun ini tidak memiliki akses Aplikasi Tahfid.');
+        }
+
+        if ($staffStatus >= 500) {
+            return back()
+                ->withInput(['app' => 'tahfid', 'username' => $username])
+                ->with('login_error', 'Server sedang bermasalah. Silakan coba lagi.');
+        }
+
+        try {
+            $siswaResponse = Http::timeout(20)->post($wsUrl, [
+                'method' => 'login',
+                'username' => $username,
+                'password' => $password,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Tahfid siswa login failed', ['message' => $e->getMessage()]);
+            return back()
+                ->withInput(['app' => 'tahfid', 'username' => $username])
+                ->with('login_error', 'Tidak dapat terhubung ke server. Silakan coba lagi.');
+        }
+
+        $siswaPayload = is_array($siswaResponse->json()) ? $siswaResponse->json() : [];
+        $siswaStatus = (int) ($siswaPayload['status'] ?? $siswaResponse->status());
+        $siswaData = (isset($siswaPayload['data']) && is_array($siswaPayload['data'])) ? $siswaPayload['data'] : [];
+        $siswaToken = trim((string) ($siswaData['token'] ?? ''));
+
+        if (! $siswaResponse->ok() || $siswaStatus !== 200 || $siswaToken === '') {
+            $message = trim((string) ($siswaPayload['message'] ?? ''));
+            if ($message === '') {
+                $message = trim((string) ($staffPayload['message'] ?? ''));
+            }
+            if ($message === '') {
+                $message = 'Username atau password salah.';
+            }
+
+            return back()
+                ->withInput(['app' => 'tahfid', 'username' => $username])
+                ->with('login_error', $message);
+        }
+
+        $request->session()->put('user', [
+            'userid' => trim((string) ($siswaData['custid'] ?? '')),
+            'username' => (string) ($siswaData['nocust'] ?? $username),
+            'nama' => (string) ($siswaData['nmcust'] ?? $username),
+            'role' => 'siswa',
+            'code01' => trim((string) ($siswaData['code01'] ?? '')),
+            'kelas' => trim((string) ($siswaData['kelas'] ?? '')),
+            'custid' => trim((string) ($siswaData['custid'] ?? '')),
+            'nocust' => trim((string) ($siswaData['nocust'] ?? '')),
+            'approval_token' => $siswaToken,
+            'app' => 'tahfid',
+            'user_type' => 'siswa',
+        ]);
+
+        return redirect()->route('tahfid.siswa.index');
     }
 
     private function loginLaporan(array $validated)

@@ -1,266 +1,352 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Approval Prestasi</title>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --purple: #5b21b6;
-            --purple-soft: #f3eefc;
-            --purple-border: #ddd4f5;
-            --text: #1f2431;
-            --muted: #64748b;
-            --bg: #f5f2fb;
-            --card: #ffffff;
-            --ok: #16a34a;
-            --danger: #dc2626;
+@extends('layouts.approval')
+
+@section('title', 'Approval Prestasi')
+@section('heading', 'Approval Prestasi')
+
+@section('content')
+    @php
+        $tabParams = array_filter([
+            'q' => $q,
+            'tanggal_dari' => $tanggalDari,
+            'tanggal_sampai' => $tanggalSampai,
+        ]);
+        $sekolahOptions = [];
+        $kategoriOptions = [];
+        foreach ($items as $row) {
+            $sch = trim((string) ($row['sekolah'] ?? ''));
+            $kat = trim((string) ($row['kategori_nama'] ?? ''));
+            if ($kat === '') {
+                $jenis = trim((string) ($row['jenis_prestasi'] ?? ''));
+                $kat = $jenis !== '' ? explode(' — ', $jenis)[0] : '';
+            }
+            if ($sch !== '') {
+                $sekolahOptions[$sch] = $sch;
+            }
+            if ($kat !== '') {
+                $kategoriOptions[$kat] = $kat;
+            }
         }
-        * { box-sizing: border-box; }
-        body { margin: 0; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: var(--bg); color: var(--text); }
-        .top {
-            display: flex; justify-content: space-between; align-items: center; gap: 12px;
-            padding: 16px 20px; background: #fff; border-bottom: 1px solid var(--purple-border);
-            position: sticky; top: 0; z-index: 20;
-            box-shadow: 0 1px 0 rgba(91, 33, 182, 0.04);
-        }
-        .title { font-size: 1.12rem; font-weight: 700; color: var(--purple); }
-        .meta { font-size: 0.84rem; color: var(--muted); margin-top: 3px; }
-        .scope-pill {
-            display: inline-flex; align-items: center; gap: 6px;
-            margin-top: 6px; padding: 4px 10px; border-radius: 999px;
-            background: var(--purple-soft); color: var(--purple); font-size: 0.75rem; font-weight: 700;
-        }
-        .wrap { max-width: 920px; margin: 0 auto; padding: 16px 16px 36px; }
-        .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-        .chip {
-            border: 1px solid var(--purple-border); border-radius: 999px; padding: 8px 14px;
-            text-decoration: none; color: var(--purple); background: #fff;
-            font-weight: 700; font-size: 0.84rem; display: inline-flex; align-items: center; gap: 6px;
-            transition: .15s ease;
-        }
-        .chip:hover { background: var(--purple-soft); }
-        .chip.active { background: var(--purple); color: #fff; border-color: var(--purple); }
-        .btn-logout { cursor: pointer; }
-        .filters {
-            background: var(--card); border: 1px solid var(--purple-border); border-radius: 16px;
-            padding: 14px; margin-bottom: 14px;
-            box-shadow: 0 8px 24px rgba(91, 33, 182, 0.05);
-        }
-        .filters-grid {
-            display: grid; grid-template-columns: 1.5fr 1fr auto auto; gap: 10px; align-items: end;
-        }
-        .field label {
-            display: block; font-size: 0.75rem; font-weight: 700; color: var(--muted);
-            margin-bottom: 6px; text-transform: uppercase; letter-spacing: .03em;
-        }
-        .field input {
-            width: 100%; border: 1px solid #e4dcf7; border-radius: 12px; padding: 10px 12px;
-            font: inherit; font-size: 0.9rem; background: #fbfaff; color: var(--text);
-            outline: none; transition: .15s ease;
-        }
-        .field input:focus { border-color: #a78bfa; box-shadow: 0 0 0 3px rgba(167, 139, 250, .25); background: #fff; }
-        .btn {
-            border: none; border-radius: 12px; padding: 10px 14px; font-size: 0.84rem;
-            font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-            text-decoration: none; white-space: nowrap;
-        }
-        .btn-primary { background: var(--purple); color: #fff; }
-        .btn-ghost { background: #fff; color: var(--purple); border: 1px solid var(--purple-border); }
-        .btn.approve { background: var(--ok); color: #fff; }
-        .btn.reject { background: var(--danger); color: #fff; }
-        .summary {
-            display: flex; justify-content: space-between; align-items: center; gap: 8px;
-            margin-bottom: 12px; color: var(--muted); font-size: 0.84rem; font-weight: 600;
-        }
-        .card {
-            background: var(--card); border: 1px solid var(--purple-border); border-radius: 16px;
-            padding: 14px; margin-bottom: 12px;
-            box-shadow: 0 8px 22px rgba(91, 33, 182, 0.05);
-        }
-        .head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-        .nm { font-weight: 700; font-size: 1rem; }
-        .sub { font-size: 0.82rem; color: var(--muted); margin-top: 4px; line-height: 1.45; }
-        .school-tag {
-            display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;
-            padding: 4px 10px; border-radius: 999px; background: #eef2ff; color: #4338ca;
-            font-size: 0.75rem; font-weight: 700;
-        }
-        .badge { font-size: 0.72rem; padding: 5px 10px; border-radius: 999px; font-weight: 800; height: fit-content; }
-        .badge.pending { background: #fef3c7; color: #92400e; }
-        .badge.approved { background: #dcfce7; color: #166534; }
-        .grid {
-            display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px;
-            font-size: 0.86rem; color: #334155;
-        }
-        .row-label { display: block; font-size: 0.72rem; font-weight: 700; color: #94a3b8; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .03em; }
-        .row-value { font-weight: 600; word-break: break-word; }
-        .row-value a { color: #4f46e5; font-weight: 700; text-decoration: none; }
-        .row-value a:hover { text-decoration: underline; }
-        .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; padding-top: 12px; border-top: 1px dashed #ebe5f8; }
-        .empty {
-            text-align: center; color: var(--muted); background: #fff;
-            border: 1px dashed #d8d2ea; border-radius: 16px; padding: 42px 16px;
-        }
-        .empty i { font-size: 1.6rem; color: #a78bfa; margin-bottom: 8px; }
-        .msg { margin-bottom: 12px; border-radius: 12px; padding: 10px 12px; font-size: 0.84rem; font-weight: 600; }
-        .msg.ok { background: #dcfce7; color: #166534; }
-        .msg.err { background: #fee2e2; color: #b91c1c; }
-        @media (max-width: 760px) {
-            .filters-grid { grid-template-columns: 1fr; }
-            .grid { grid-template-columns: 1fr; }
-            .top { align-items: flex-start; }
-        }
-    </style>
-</head>
-<body>
-    <div class="top">
-        <div>
-            <div class="title">Aplikasi Approval Prestasi</div>
-            <div class="meta">Login: {{ session('user.nama', session('user.username')) }}</div>
-            <div class="scope-pill">
-                <i class="fas fa-school"></i>
-                @if($scopeCode01 !== '')
-                    {{ $scopeSekolah !== '' ? $scopeSekolah : 'Scope Sekolah' }}
-                @else
-                    Semua Sekolah
-                @endif
-            </div>
-        </div>
-        <form method="POST" action="{{ route('logout') }}">
-            @csrf
-            <button type="submit" class="chip btn-logout"><i class="fas fa-right-from-bracket"></i> Logout</button>
-        </form>
+        ksort($sekolahOptions);
+        ksort($kategoriOptions);
+    @endphp
+
+    <div class="tabs">
+        <a href="{{ route('approval.prestasi.index', array_merge($tabParams, ['status' => 'pending'])) }}" class="chip {{ $status === 'pending' ? 'active' : '' }}">Pending</a>
+        <a href="{{ route('approval.prestasi.index', array_merge($tabParams, ['status' => 'approved'])) }}" class="chip {{ $status === 'approved' ? 'active' : '' }}">Disetujui</a>
+        <a href="{{ route('approval.prestasi.index', array_merge($tabParams, ['status' => 'canceled'])) }}" class="chip {{ $status === 'canceled' ? 'active' : '' }}">Ditolak</a>
+        <a href="{{ route('approval.prestasi.index', array_merge($tabParams, ['status' => 'all'])) }}" class="chip {{ $status === 'all' ? 'active' : '' }}">Semua</a>
     </div>
 
-    <div class="wrap">
-        @if(session('success'))
-            <div class="msg ok">{{ session('success') }}</div>
-        @endif
-        @if(session('error'))
-            <div class="msg err">{{ session('error') }}</div>
-        @endif
-        @if($errors->any())
-            <div class="msg err">{{ $errors->first() }}</div>
-        @endif
-        @if(!empty($errorMessage))
-            <div class="msg err">{{ $errorMessage }}</div>
-        @endif
-
-        <div class="toolbar">
-            <a href="{{ route('approval.prestasi.index', array_filter(['status' => 'pending', 'q' => $q, 'tanggal' => $tanggal])) }}" class="chip {{ $status === 'pending' ? 'active' : '' }}">Pending</a>
-            <a href="{{ route('approval.prestasi.index', array_filter(['status' => 'approved', 'q' => $q, 'tanggal' => $tanggal])) }}" class="chip {{ $status === 'approved' ? 'active' : '' }}">Approved</a>
-            <a href="{{ route('approval.prestasi.index', array_filter(['status' => 'all', 'q' => $q, 'tanggal' => $tanggal])) }}" class="chip {{ $status === 'all' ? 'active' : '' }}">Semua</a>
-        </div>
-
-        <form method="GET" action="{{ route('approval.prestasi.index') }}" class="filters">
-            <input type="hidden" name="status" value="{{ $status }}">
+    <div class="panel table-card">
+        <div class="filters">
             <div class="filters-grid">
                 <div class="field">
-                    <label for="q">NIS / Nama</label>
-                    <input id="q" type="text" name="q" value="{{ $q }}" placeholder="Cari NIS atau nama siswa...">
+                    <label for="filterQ">Siswa</label>
+                    <input id="filterQ" type="text" value="{{ $q }}" placeholder="NIS atau nama">
+                </div>
+                @if(!empty($isSuperadmin))
+                <div class="field">
+                    <label for="filterSekolah">Sekolah</label>
+                    <select id="filterSekolah">
+                        <option value="">Semua sekolah</option>
+                        @foreach($sekolahOptions as $opt)
+                            <option value="{{ $opt }}">{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+                <div class="field">
+                    <label for="filterJenis">Kategori</label>
+                    <select id="filterJenis">
+                        <option value="">Semua kategori</option>
+                        @foreach($kategoriOptions as $opt)
+                            <option value="{{ $opt }}">{{ $opt }}</option>
+                        @endforeach
+                    </select>
                 </div>
                 <div class="field">
-                    <label for="tanggal">Tanggal</label>
-                    <input id="tanggal" type="date" name="tanggal" value="{{ $tanggal }}">
+                    <label for="filterDari">Dari</label>
+                    <input id="filterDari" type="date" value="{{ $tanggalDari }}">
                 </div>
-                <button type="submit" class="btn btn-primary"><i class="fas fa-filter"></i> Filter</button>
-                <a href="{{ route('approval.prestasi.index', ['status' => $status]) }}" class="btn btn-ghost">Reset</a>
+                <div class="field">
+                    <label for="filterSampai">Sampai</label>
+                    <input id="filterSampai" type="date" value="{{ $tanggalSampai }}">
+                </div>
+                <button type="button" class="btn btn-ghost" id="filterReset">Reset</button>
             </div>
-        </form>
-
-        <div class="summary">
-            <span>{{ count($items) }} data ditampilkan</span>
-            @if($q !== '' || $tanggal !== '')
-                <span>Filter aktif</span>
-            @endif
         </div>
-
-        @forelse($items as $item)
-            @php
-                $sekolah = trim((string) ($item['sekolah'] ?? ''));
-                $isApproved = (int) ($item['isapproved'] ?? 0) === 1;
-            @endphp
-            <div class="card">
-                <div class="head">
-                    <div>
-                        <div class="nm">{{ $item['nmcust'] ?: '-' }}</div>
-                        <div class="sub">
-                            NIS: {{ $item['nocust'] ?: '-' }} · Kelas: {{ $item['kelas'] ?: '-' }}
-                        </div>
-                        @if($sekolah !== '')
-                            <div class="school-tag"><i class="fas fa-building-columns"></i> {{ $sekolah }}</div>
-                        @endif
-                    </div>
-                    <div class="badge {{ $isApproved ? 'approved' : 'pending' }}">
-                        {{ $isApproved ? 'APPROVED' : 'PENDING' }}
-                    </div>
+        <div class="table-toolbar">
+            <span class="count-pill" id="resultCount">{{ count($items) }} data</span>
+            <span class="count-pill" id="sortHint">Terbaru dulu</span>
+        </div>
+        <div class="table-wrap">
+            @if(count($items) === 0)
+                <div class="empty">
+                    <div><i class="fas fa-inbox"></i></div>
+                    Tidak ada data pada filter ini.
                 </div>
-                <div class="grid">
-                    <div>
-                        <span class="row-label">Jenis</span>
-                        <div class="row-value">{{ $item['jenis_prestasi'] ?: '-' }}</div>
-                    </div>
-                    <div>
-                        <span class="row-label">Nilai</span>
-                        <div class="row-value">{{ number_format((float) ($item['nilai_penghargaan'] ?? 0), 2, ',', '.') }}</div>
-                    </div>
-                    <div style="grid-column: 1 / -1;">
-                        <span class="row-label">Keterangan</span>
-                        <div class="row-value">{{ $item['keterangan'] ?: '-' }}</div>
-                    </div>
-                    <div>
-                        <span class="row-label">Tahun Akademik</span>
-                        <div class="row-value">{{ $item['bta'] ?: '-' }}</div>
-                    </div>
-                    <div>
-                        <span class="row-label">URL Bukti</span>
-                        <div class="row-value">
-                            @if(!empty($item['url']))
-                                <a href="{{ $item['url'] }}" target="_blank" rel="noopener noreferrer">Lihat bukti</a>
-                            @else
-                                -
-                            @endif
-                        </div>
-                    </div>
-                    <div>
-                        <span class="row-label">Approved Date</span>
-                        <div class="row-value">{{ $item['approveddate'] ?: '-' }}</div>
-                    </div>
-                    <div>
-                        <span class="row-label">Approved By</span>
-                        <div class="row-value">{{ $item['approvedby'] ?: '-' }}</div>
-                    </div>
-                </div>
-                <div class="actions">
-                    <form method="POST" action="{{ route('approval.prestasi.action') }}">
-                        @csrf
-                        <input type="hidden" name="id" value="{{ $item['id'] }}">
-                        <input type="hidden" name="action" value="approve">
-                        <input type="hidden" name="status" value="{{ $status }}">
-                        <input type="hidden" name="q" value="{{ $q }}">
-                        <input type="hidden" name="tanggal" value="{{ $tanggal }}">
-                        <button type="submit" class="btn approve"><i class="fas fa-check"></i> Approve</button>
-                    </form>
-                    <form method="POST" action="{{ route('approval.prestasi.action') }}">
-                        @csrf
-                        <input type="hidden" name="id" value="{{ $item['id'] }}">
-                        <input type="hidden" name="action" value="tolak">
-                        <input type="hidden" name="status" value="{{ $status }}">
-                        <input type="hidden" name="q" value="{{ $q }}">
-                        <input type="hidden" name="tanggal" value="{{ $tanggal }}">
-                        <button type="submit" class="btn reject"><i class="fas fa-xmark"></i> Tolak</button>
-                    </form>
-                </div>
-            </div>
-        @empty
-            <div class="empty">
-                <div><i class="fas fa-inbox"></i></div>
-                Tidak ada data approval pada filter ini.
-            </div>
-        @endforelse
+            @else
+                <table class="data" id="approvalTable">
+                <thead>
+                    <tr>
+                        <th>Siswa</th>
+                        <th>Sekolah</th>
+                        <th>Prestasi</th>
+                        <th>Poin</th>
+                        <th>Periode</th>
+                        <th class="sortable" id="sortCreated">Diunggah <i class="fas fa-sort"></i></th>
+                        <th>Status</th>
+                        <th>Bukti</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody id="approvalBody">
+                    @foreach($items as $item)
+                        @php
+                            $rawStatus = strtolower(trim((string) ($item['isapproved'] ?? 'pending')));
+                            $itemStatus = match ($rawStatus) {
+                                '1', 'approve', 'approved' => 'approve',
+                                'canceled', 'cancelled', 'tolak', 'rejected' => 'canceled',
+                                default => 'pending',
+                            };
+                            $statusBadge = match ($itemStatus) {
+                                'approve' => ['class' => 'approved', 'label' => 'Disetujui'],
+                                'canceled' => ['class' => 'canceled', 'label' => 'Ditolak'],
+                                default => ['class' => 'pending', 'label' => 'Pending'],
+                            };
+                            $sekolah = trim((string) ($item['sekolah'] ?? ''));
+                            $created = (string) ($item['created_at'] ?? '');
+                            $createdDate = substr($created, 0, 10);
+                            $createdLabel = $created !== '' ? date('d/m/Y H:i', strtotime($created)) : '-';
+                            $kategori = trim((string) ($item['kategori_nama'] ?? ''));
+                            $tingkat = trim((string) ($item['tingkat_nama'] ?? ''));
+                            $capaian = trim((string) ($item['poin_nama'] ?? ''));
+                            if ($kategori === '') {
+                                $parts = array_map('trim', explode(' — ', (string) ($item['jenis_prestasi'] ?? '')));
+                                $kategori = $parts[0] ?? '';
+                                $tingkat = $tingkat !== '' ? $tingkat : ($parts[1] ?? '');
+                                $capaian = $capaian !== '' ? $capaian : ($parts[2] ?? '');
+                            }
+                            $semester = (string) ($item['semester'] ?? '');
+                            $semesterLabel = $semester === '1' ? 'Ganjil' : ($semester === '2' ? 'Genap' : ($semester !== '' ? 'S'.$semester : '-'));
+                            $bukti = trim((string) ($item['url'] ?? ''));
+                            $isDrive = $bukti !== '' && (str_contains($bukti, 'drive.google.com') || str_contains($bukti, 'docs.google.com') || str_contains($bukti, 'drive.usercontent.google.com'));
+                        @endphp
+                        <tr
+                            class="data-row"
+                            data-nama="{{ mb_strtolower((string) ($item['nmcust'] ?? '')) }}"
+                            data-nis="{{ mb_strtolower((string) ($item['nocust'] ?? '')) }}"
+                            data-sekolah="{{ $sekolah }}"
+                            data-jenis="{{ $kategori }}"
+                            data-created="{{ $created }}"
+                            data-date="{{ $createdDate }}"
+                        >
+                            <td>
+                                @php
+                                    $initials = strtoupper(mb_substr(trim((string) ($item['nmcust'] ?? 'S')), 0, 1));
+                                @endphp
+                                <div class="cell-user">
+                                    <span class="avatar">{{ $initials }}</span>
+                                    <div>
+                                        <div class="cell-main">{{ $item['nmcust'] ?: '-' }}</div>
+                                        <div class="cell-sub">{{ $item['nocust'] ?: '-' }} · {{ $item['kelas'] ?: '-' }}@if(!empty($item['nisn'])) · NISN {{ $item['nisn'] }}@endif</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>{{ $sekolah !== '' ? $sekolah : '-' }}</td>
+                            <td>
+                                <div class="cell-main">{{ $kategori !== '' ? $kategori : '-' }}</div>
+                                <div class="cell-sub">{{ trim(implode(' · ', array_filter([$tingkat, $capaian]))) ?: '-' }}</div>
+                                @if(!empty($item['penyelenggara']) || !empty($item['no_sertifikat']))
+                                    <div class="cell-sub">{{ $item['penyelenggara'] ?: '-' }}@if(!empty($item['no_sertifikat'])) · {{ $item['no_sertifikat'] }}@endif</div>
+                                @endif
+                                @if(!empty($item['keterangan']))
+                                    <div class="cell-sub">{{ $item['keterangan'] }}</div>
+                                @endif
+                            </td>
+                            <td class="mono">{{ number_format((float) ($item['nilai_penghargaan'] ?? 0), 2, ',', '.') }}</td>
+                            <td>
+                                <div>{{ $item['bta'] ?: '-' }}</div>
+                                <div class="cell-sub">{{ $semesterLabel }}</div>
+                            </td>
+                            <td class="mono">{{ $createdLabel }}</td>
+                            <td>
+                                <span class="badge {{ $statusBadge['class'] }}">{{ $statusBadge['label'] }}</span>
+                                @if($itemStatus !== 'pending' && (trim((string) ($item['approvedby'] ?? '')) !== '' || trim((string) ($item['approveddate'] ?? '')) !== ''))
+                                    <div class="cell-sub">{{ $item['approvedby'] ?: '-' }} · {{ $item['approveddate'] ?: '-' }}</div>
+                                @endif
+                                @if($itemStatus === 'canceled' && trim((string) ($item['catatan_admin'] ?? '')) !== '')
+                                    <div class="cell-sub">Catatan: {{ $item['catatan_admin'] }}</div>
+                                @endif
+                            </td>
+                            <td>
+                                @if($bukti !== '')
+                                    <a class="link" href="{{ $bukti }}" target="_blank" rel="noopener noreferrer">{{ $isDrive ? 'Drive' : 'Lihat' }}</a>
+                                @else
+                                    -
+                                @endif
+                            </td>
+                            <td>
+                                <div class="actions">
+                                    @if($itemStatus !== 'approve')
+                                    <form method="POST" action="{{ route('approval.prestasi.action') }}" class="js-confirm" data-title="Setujui prestasi?" data-text="Data ini akan disetujui.">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $item['id'] }}">
+                                        <input type="hidden" name="action" value="approve">
+                                        <input type="hidden" name="status" value="{{ $status }}">
+                                        <input type="hidden" name="q" value="{{ $q }}">
+                                        <input type="hidden" name="tanggal_dari" value="{{ $tanggalDari }}">
+                                        <input type="hidden" name="tanggal_sampai" value="{{ $tanggalSampai }}">
+                                        <button type="submit" class="btn btn-ok btn-sm">Setujui</button>
+                                    </form>
+                                    @endif
+                                    @if($itemStatus !== 'canceled')
+                                    <form method="POST" action="{{ route('approval.prestasi.action') }}" class="js-confirm" data-title="Tolak prestasi?" data-text="Isi catatan penolakan. Catatan ini akan terlihat di data yang ditolak." data-note="required">
+                                        @csrf
+                                        <input type="hidden" name="id" value="{{ $item['id'] }}">
+                                        <input type="hidden" name="action" value="tolak">
+                                        <input type="hidden" name="status" value="{{ $status }}">
+                                        <input type="hidden" name="q" value="{{ $q }}">
+                                        <input type="hidden" name="tanggal_dari" value="{{ $tanggalDari }}">
+                                        <input type="hidden" name="tanggal_sampai" value="{{ $tanggalSampai }}">
+                                        <input type="hidden" name="catatan_admin" class="js-catatan-admin" value="">
+                                        <button type="submit" class="btn btn-danger btn-sm">Tolak</button>
+                                    </form>
+                                    @endif
+                                </div>
+                            </td>
+                        </tr>
+                    @endforeach
+                </tbody>
+            </table>
+            <div class="empty" id="emptyFiltered" style="display:none;">Tidak ada data yang cocok dengan filter.</div>
+        @endif
+        </div>
     </div>
-</body>
-</html>
+@endsection
+
+@section('scripts')
+<script>
+(function () {
+    var body = document.getElementById('approvalBody');
+    if (!body) return;
+    var groupBySchool = @json(!empty($isSuperadmin));
+    var collapsed = {};
+    var sortDir = 'desc';
+    var qEl = document.getElementById('filterQ');
+    var schEl = document.getElementById('filterSekolah');
+    var jenisEl = document.getElementById('filterJenis');
+    var dariEl = document.getElementById('filterDari');
+    var sampaiEl = document.getElementById('filterSampai');
+    var countEl = document.getElementById('resultCount');
+    var hintEl = document.getElementById('sortHint');
+    var emptyEl = document.getElementById('emptyFiltered');
+    var table = document.getElementById('approvalTable');
+
+    function apply() {
+        var q = (qEl && qEl.value || '').trim().toLowerCase();
+        var school = schEl ? schEl.value : '';
+        var jenis = jenisEl ? jenisEl.value : '';
+        var dari = dariEl ? dariEl.value : '';
+        var sampai = sampaiEl ? sampaiEl.value : '';
+        var rows = Array.prototype.slice.call(body.querySelectorAll('tr.data-row'));
+        body.querySelectorAll('tr.group-row').forEach(function (el) { el.remove(); });
+
+        function byDate(a, b) {
+            var av = a.getAttribute('data-created') || '';
+            var bv = b.getAttribute('data-created') || '';
+            if (av === bv) return 0;
+            if (sortDir === 'asc') return av > bv ? 1 : -1;
+            return av < bv ? 1 : -1;
+        }
+
+        var visible = [];
+        rows.forEach(function (row) {
+            var ok = true;
+            if (q && row.getAttribute('data-nama').indexOf(q) === -1 && row.getAttribute('data-nis').indexOf(q) === -1) ok = false;
+            if (ok && school && row.getAttribute('data-sekolah') !== school) ok = false;
+            if (ok && jenis && row.getAttribute('data-jenis') !== jenis) ok = false;
+            var d = row.getAttribute('data-date') || '';
+            if (ok && dari && d < dari) ok = false;
+            if (ok && sampai && d > sampai) ok = false;
+            row.style.display = ok ? '' : 'none';
+            if (ok) visible.push(row);
+        });
+
+        if (groupBySchool) {
+            var map = {};
+            var order = [];
+            visible.forEach(function (row) {
+                var key = row.getAttribute('data-sekolah') || 'Lainnya';
+                if (!map[key]) {
+                    map[key] = [];
+                    order.push(key);
+                }
+                map[key].push(row);
+            });
+            order.sort(function (a, b) { return a.localeCompare(b, 'id'); });
+            order.forEach(function (key) {
+                map[key].sort(byDate);
+                var tr = document.createElement('tr');
+                tr.className = 'group-row';
+                tr.setAttribute('data-group', key);
+                var td = document.createElement('td');
+                td.colSpan = 9;
+                var open = !collapsed[key];
+                td.innerHTML = '<i class="fas ' + (open ? 'fa-chevron-down' : 'fa-chevron-right') + '"></i> ' +
+                    key + '<span class="group-count">' + map[key].length + '</span>';
+                tr.appendChild(td);
+                body.appendChild(tr);
+                map[key].forEach(function (row) {
+                    row.style.display = open ? '' : 'none';
+                    body.appendChild(row);
+                });
+            });
+        } else {
+            visible.sort(byDate);
+            visible.forEach(function (row) { body.appendChild(row); });
+        }
+
+        var shown = visible.filter(function (row) { return row.style.display !== 'none'; }).length;
+        if (countEl) countEl.textContent = shown + ' data';
+        if (hintEl) hintEl.textContent = sortDir === 'asc' ? 'Terlama dulu' : 'Terbaru dulu';
+        if (emptyEl) emptyEl.style.display = visible.length === 0 ? 'block' : 'none';
+        if (table) table.style.display = visible.length === 0 ? 'none' : '';
+    }
+
+    body.addEventListener('click', function (e) {
+        var group = e.target.closest('tr.group-row');
+        if (!group) return;
+        var key = group.getAttribute('data-group');
+        collapsed[key] = !collapsed[key];
+        apply();
+    });
+
+    var sortBtn = document.getElementById('sortCreated');
+    if (sortBtn) sortBtn.addEventListener('click', function () {
+        sortDir = sortDir === 'desc' ? 'asc' : 'desc';
+        apply();
+    });
+
+    [qEl, schEl, jenisEl, dariEl, sampaiEl].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', apply);
+        el.addEventListener('change', apply);
+    });
+
+    var resetBtn = document.getElementById('filterReset');
+    if (resetBtn) resetBtn.addEventListener('click', function () {
+        if (qEl) qEl.value = '';
+        if (schEl) schEl.value = '';
+        if (jenisEl) jenisEl.value = '';
+        if (dariEl) dariEl.value = '';
+        if (sampaiEl) sampaiEl.value = '';
+        sortDir = 'desc';
+        collapsed = {};
+        apply();
+    });
+
+    apply();
+})();
+</script>
+@endsection

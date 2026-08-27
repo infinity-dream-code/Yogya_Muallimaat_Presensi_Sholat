@@ -249,6 +249,12 @@
                             <option value="approval-prestasi" {{ old('app') === 'approval-prestasi' ? 'selected' : '' }}>
                                 Aplikasi Approval Prestasi
                             </option>
+                            <option value="catatan-kepribadian" {{ old('app') === 'catatan-kepribadian' ? 'selected' : '' }}>
+                                Aplikasi Catatan Kepribadian Siswi
+                            </option>
+                            <option value="tahfid" {{ old('app') === 'tahfid' ? 'selected' : '' }}>
+                                Aplikasi Tahfid
+                            </option>
                         </select>
                     </div>
                 </div>

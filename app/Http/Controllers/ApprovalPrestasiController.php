@@ -15,24 +15,32 @@ class ApprovalPrestasiController extends Controller
         }
 
         $status = $request->query('status', 'pending');
-        if (! in_array($status, ['all', 'pending', 'approved'], true)) {
+        if (! in_array($status, ['all', 'pending', 'approved', 'canceled'], true)) {
             $status = 'pending';
         }
 
         $q = trim((string) $request->query('q', ''));
-        $tanggal = trim((string) $request->query('tanggal', ''));
-        if ($tanggal !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggal)) {
-            $tanggal = '';
+        $tanggalDari = trim((string) $request->query('tanggal_dari', ''));
+        $tanggalSampai = trim((string) $request->query('tanggal_sampai', ''));
+        if ($tanggalDari !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalDari)) {
+            $tanggalDari = '';
+        }
+        if ($tanggalSampai !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalSampai)) {
+            $tanggalSampai = '';
         }
 
-        [$items, $error, $scopeSekolah] = $this->fetchItems($status, $q, $tanggal);
+        [$items, $error, $scopeSekolah] = $this->fetchItems($status, $q, $tanggalDari, $tanggalSampai);
+        $isSuperadmin = strtolower(trim((string) session('user.role', ''))) === 'superadmin';
 
         return view('approval_prestasi', [
             'items' => $items,
             'status' => $status,
             'q' => $q,
-            'tanggal' => $tanggal,
-            'scopeCode01' => trim((string) session('user.code01', '')),
+            'tanggalDari' => $tanggalDari,
+            'tanggalSampai' => $tanggalSampai,
+            'isSuperadmin' => $isSuperadmin,
+            'navActive' => 'approval',
+            'scopeCode01' => $isSuperadmin ? '' : trim((string) session('user.code01', '')),
             'scopeSekolah' => $scopeSekolah,
             'errorMessage' => $error,
         ]);
@@ -47,9 +55,11 @@ class ApprovalPrestasiController extends Controller
         $validated = $request->validate([
             'id' => ['required', 'integer', 'min:1'],
             'action' => ['required', 'in:approve,tolak'],
-            'status' => ['nullable', 'string', 'in:all,pending,approved'],
+            'status' => ['nullable', 'string', 'in:all,pending,approved,canceled'],
             'q' => ['nullable', 'string', 'max:100'],
-            'tanggal' => ['nullable', 'date_format:Y-m-d'],
+            'tanggal_dari' => ['nullable', 'date_format:Y-m-d'],
+            'tanggal_sampai' => ['nullable', 'date_format:Y-m-d'],
+            'catatan_admin' => ['required_if:action,tolak', 'nullable', 'string', 'min:3', 'max:500'],
         ]);
 
         $token = trim((string) session('user.approval_token', ''));
@@ -63,6 +73,9 @@ class ApprovalPrestasiController extends Controller
             'id' => (int) $validated['id'],
             'status_filter' => $validated['status'] ?? 'pending',
         ];
+        if ($validated['action'] === 'tolak') {
+            $wsRequest['catatan_admin'] = trim((string) ($validated['catatan_admin'] ?? ''));
+        }
         Log::info('Approval WS action request', [
             'url' => $wsUrl,
             'request' => $wsRequest,
@@ -70,12 +83,16 @@ class ApprovalPrestasiController extends Controller
         ]);
 
         try {
-            $response = Http::timeout(20)->post($wsUrl, [
+            $wsBody = [
                 'method' => 'approval',
                 'token' => $token,
                 'action' => $validated['action'],
                 'id' => (int) $validated['id'],
-            ]);
+            ];
+            if ($validated['action'] === 'tolak') {
+                $wsBody['catatan_admin'] = trim((string) ($validated['catatan_admin'] ?? ''));
+            }
+            $response = Http::timeout(20)->post($wsUrl, $wsBody);
         } catch (\Throwable $e) {
             Log::error('Approval WS action exception', [
                 'url' => $wsUrl,
@@ -106,12 +123,13 @@ class ApprovalPrestasiController extends Controller
             ->route('approval.prestasi.index', array_filter([
                 'status' => $validated['status'] ?? 'pending',
                 'q' => $validated['q'] ?? null,
-                'tanggal' => $validated['tanggal'] ?? null,
+                'tanggal_dari' => $validated['tanggal_dari'] ?? null,
+                'tanggal_sampai' => $validated['tanggal_sampai'] ?? null,
             ], fn ($v) => $v !== null && $v !== ''))
             ->with('success', $message);
     }
 
-    private function fetchItems(string $status, string $q = '', string $tanggal = ''): array
+    private function fetchItems(string $status, string $q = '', string $tanggalDari = '', string $tanggalSampai = ''): array
     {
         $token = trim((string) session('user.approval_token', ''));
         if ($token === '') {
@@ -121,9 +139,11 @@ class ApprovalPrestasiController extends Controller
 
         $isapproved = '';
         if ($status === 'pending') {
-            $isapproved = '0';
+            $isapproved = 'pending';
         } elseif ($status === 'approved') {
-            $isapproved = '1';
+            $isapproved = 'approve';
+        } elseif ($status === 'canceled') {
+            $isapproved = 'canceled';
         }
 
         $wsRequest = [
@@ -131,7 +151,8 @@ class ApprovalPrestasiController extends Controller
             'action' => 'list',
             'isapproved' => $isapproved,
             'q' => $q,
-            'tanggal' => $tanggal,
+            'tanggal_dari' => $tanggalDari,
+            'tanggal_sampai' => $tanggalSampai,
         ];
         Log::info('Approval WS list request', [
             'url' => $wsUrl,
@@ -147,7 +168,8 @@ class ApprovalPrestasiController extends Controller
                 'action' => 'list',
                 'isapproved' => $isapproved,
                 'q' => $q,
-                'tanggal' => $tanggal,
+                'tanggal_dari' => $tanggalDari,
+                'tanggal_sampai' => $tanggalSampai,
             ]);
         } catch (\Throwable $e) {
             Log::error('Approval WS list exception', [
@@ -183,25 +205,26 @@ class ApprovalPrestasiController extends Controller
         }
 
         // Fallback filter jika WS production belum support q/tanggal
-        $items = $this->applyLocalFilters($items, $q, $tanggal);
+        $items = $this->applyLocalFilters($items, $q, $tanggalDari, $tanggalSampai);
 
         $scopeSekolah = trim((string) ($payload['data']['scope_sekolah'] ?? ''));
-        if ($scopeSekolah === '' && $items !== []) {
+        $isSuperadmin = strtolower(trim((string) session('user.role', ''))) === 'superadmin';
+        if (! $isSuperadmin && $scopeSekolah === '' && $items !== []) {
             $scopeSekolah = trim((string) ($items[0]['sekolah'] ?? ''));
         }
 
         return [$items, null, $scopeSekolah];
     }
 
-    private function applyLocalFilters(array $items, string $q, string $tanggal): array
+    private function applyLocalFilters(array $items, string $q, string $tanggalDari, string $tanggalSampai): array
     {
-        if ($q === '' && $tanggal === '') {
+        if ($q === '' && $tanggalDari === '' && $tanggalSampai === '') {
             return $items;
         }
 
         $qLower = mb_strtolower($q);
 
-        return array_values(array_filter($items, function (array $item) use ($qLower, $tanggal) {
+        return array_values(array_filter($items, function (array $item) use ($qLower, $tanggalDari, $tanggalSampai) {
             if ($qLower !== '') {
                 $nocust = mb_strtolower((string) ($item['nocust'] ?? ''));
                 $nmcust = mb_strtolower((string) ($item['nmcust'] ?? ''));
@@ -210,12 +233,12 @@ class ApprovalPrestasiController extends Controller
                 }
             }
 
-            if ($tanggal !== '') {
-                $created = (string) ($item['created_at'] ?? '');
-                $datePart = $created !== '' ? substr($created, 0, 10) : '';
-                if ($datePart !== $tanggal) {
-                    return false;
-                }
+            $datePart = substr((string) ($item['created_at'] ?? ''), 0, 10);
+            if ($tanggalDari !== '' && ($datePart === '' || $datePart < $tanggalDari)) {
+                return false;
+            }
+            if ($tanggalSampai !== '' && ($datePart === '' || $datePart > $tanggalSampai)) {
+                return false;
             }
 
             return true;
