@@ -102,8 +102,6 @@ class PresensiSholatController extends Controller
             'data' => $data,
         ]);
 
-        // Format respon Presensi Sholat berbeda dengan perizinan.
-        // Contoh: [{"STATUS":"NOTOK","RESULT":"TELAH_MELAKUKAN_PRESENSI","RES":"PRESENSI TELAH DILAKUKAN"}]
         if (is_array($data) && isset($data[0])) {
             $item = $data[0];
             $statusFlag = $item['STATUS'] ?? null;
@@ -118,7 +116,6 @@ class PresensiSholatController extends Controller
                 ]);
             }
 
-            // Khusus jika sudah pernah presensi, beri pesan yang jelas
             if ($statusFlag === 'NOTOK' && $resultCode === 'TELAH_MELAKUKAN_PRESENSI') {
                 return response()->json([
                     'ok' => false,
@@ -134,7 +131,6 @@ class PresensiSholatController extends Controller
             ], 422);
         }
 
-        // Fallback untuk format lain
         if (isset($data['KodeRespon']) && (int) $data['KodeRespon'] === 1) {
             return response()->json([
                 'ok' => true,
@@ -284,7 +280,6 @@ class PresensiSholatController extends Controller
             $tanggal = $today;
         }
 
-        // Jika tanggal = hari ini pakai LogMarifahTodayRequest, selain itu LogMarifahRequest
         if ($tanggal === $today) {
             $payload = [
                 'METHOD'   => 'LogMarifahTodayRequest',
@@ -321,7 +316,6 @@ class PresensiSholatController extends Controller
                 ]);
 
                 if (is_array($data)) {
-                    // API mengembalikan { "datas": [ ... ] }
                     if (isset($data['datas']) && is_array($data['datas'])) {
                         $entries = $data['datas'];
                     } else {
@@ -510,7 +504,6 @@ class PresensiSholatController extends Controller
             return $list;
         });
 
-        // Simpan list unit & musyrifah dari seluruh data (untuk filter dropdown)
         $allUnits = [];
         $allMus   = [];
         foreach ($all as $e) {
@@ -519,7 +512,6 @@ class PresensiSholatController extends Controller
                 $allUnits[] = $u;
             }
 
-            // Musyrifah: kolom khusus jika ada, lalu USER_1..5 selain "System"
             $m = $e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? null;
             if ($m !== null && $m !== '' && strtoupper((string) $m) !== 'SYSTEM') {
                 if (! in_array((string) $m, $allMus, true)) {
@@ -556,16 +548,24 @@ class PresensiSholatController extends Controller
         if ($musyrifah !== '') {
             $m = mb_strtolower($musyrifah);
             $all = array_values(array_filter($all, function ($e) use ($m) {
-                $first = '';
+                $candidates = [];
+                $mus = $e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? null;
+                if ($mus !== null && $mus !== '') {
+                    $candidates[] = (string) $mus;
+                }
                 for ($i = 1; $i <= 5; $i++) {
                     $k = 'USER_' . $i;
                     $v = $e[$k] ?? null;
                     if ($v !== null && $v !== '') {
-                        $first = (string) $v;
-                        break;
+                        $candidates[] = (string) $v;
                     }
                 }
-                return mb_strtolower($first) === $m;
+                foreach ($candidates as $c) {
+                    if (mb_strtolower($c) === $m) {
+                        return true;
+                    }
+                }
+                return false;
             }));
         }
 
@@ -968,10 +968,6 @@ class PresensiSholatController extends Controller
         return $pdf->download($filename);
     }
 
-    /**
-     * Ratakan data rekap: bila API mengembalikan grup (datas/siswa), ambil tiap siswa.
-     * Jangan masukkan record parent — hanya siswa dengan data per-waktu.
-     */
     private function flattenRekapDatas(array $entries): array
     {
         $flat = [];
@@ -1037,9 +1033,6 @@ class PresensiSholatController extends Controller
         });
     }
 
-    /**
-     * Samakan UNIT dengan mst_sekolah via CODE01 (scctcust), hilangkan duplikat case seperti MTS/MTs.
-     */
     private function enrichRekapWithSekolah(array $entries): array
     {
         if ($entries === []) {
@@ -1137,7 +1130,6 @@ class PresensiSholatController extends Controller
             }
 
             if ($code01 === '' && $rawUnit !== '') {
-                // Tetap dedupe case: pakai label upper sebagai nilai filter
                 $code01 = 'UNIT:' . mb_strtoupper($rawUnit);
                 $sekolah = mb_strtoupper($rawUnit);
             }
@@ -1178,7 +1170,7 @@ class PresensiSholatController extends Controller
         }
 
         $list = array_values($units);
-        usort($list, fn ($a, $b) => strcasecmp($a['label'], $b['label']));
+        usort($list, fn($a, $b) => strcasecmp($a['label'], $b['label']));
 
         return $list;
     }
