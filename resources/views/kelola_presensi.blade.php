@@ -491,7 +491,7 @@
         <ul class="sb-nav">
             <li><a href="{{ route('presensi-sholat.qr') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-qrcode"></i></span>Presensi Sholat</a></li>
             <li><a href="{{ route('presensi-haid.qr') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-qrcode"></i></span>Presensi Haid</a></li>
-            <li><a href="{{ route('presensi.log-marifah') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-rectangle-list"></i></span>Log Marifah</a></li>
+            <li><a href="{{ route('presensi.log-marifah') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-rectangle-list"></i></span>Log Musyrifah</a></li>
             <li><a href="{{ route('presensi.log-presensi') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-square-check"></i></span>Log Presensi</a></li>
             <li><a href="{{ route('presensi.kelola') }}" class="sb-link active"><span class="sb-ico"><i class="fas fa-arrows-rotate"></i></span>Kelola Presensi</a></li>
             <li><a href="{{ route('presensi.rekap-sholat') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-chart-simple"></i></span>Rekap Sholat</a></li>
