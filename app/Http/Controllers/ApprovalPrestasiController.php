@@ -64,7 +64,7 @@ class ApprovalPrestasiController extends Controller
 
         $token = trim((string) session('user.approval_token', ''));
         if ($token === '') {
-            return redirect()->route('login.form')->with('login_error', 'Sesi approval berakhir. Silakan login ulang.');
+            return back()->with('error', 'Token tidak tersedia. Muat ulang halaman, lalu coba lagi.');
         }
         $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
         $wsRequest = [
@@ -133,7 +133,7 @@ class ApprovalPrestasiController extends Controller
     {
         $token = trim((string) session('user.approval_token', ''));
         if ($token === '') {
-            return [[], 'Sesi approval berakhir. Silakan login ulang.', ''];
+            return [[], 'Token tidak tersedia. Muat ulang halaman, lalu coba lagi.', ''];
         }
         $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
 

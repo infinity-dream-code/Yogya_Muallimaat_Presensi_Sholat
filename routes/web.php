@@ -24,7 +24,40 @@ Route::get('/', [AuthController::class, 'showLogin'])->name('login.form');
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+Route::get('/session/keep-alive', function () {
+    \App\Support\PersistentLogin::restoreIntoSession(request());
+
+    if (session('user.username')) {
+        \App\Support\PersistentLogin::set(session('user'));
+    }
+
+    return response()->json([
+        'ok' => true,
+        'csrf' => csrf_token(),
+        'authenticated' => (bool) session('user.username'),
+    ]);
+})->name('session.keep-alive');
+
+Route::get('/home', function () {
+    return redirect()->route('admin.index');
+})->name('home');
+
 Route::middleware(['check.auth'])->group(function () {
+    Route::get('/admin', function () {
+        $app = (string) session('user.app', '');
+        $role = strtolower((string) session('user.role', ''));
+
+        return match ($app) {
+            'presensi-sholat' => redirect()->route('dashboard.presensi-sholat'),
+            'approval-prestasi' => redirect()->route('approval.prestasi.index'),
+            'catatan-kepribadian' => redirect()->route('catatan.kepribadian.index'),
+            'tahfid' => $role === 'siswa'
+                ? redirect()->route('tahfid.siswa.index')
+                : redirect()->route('tahfid.jadwal.index'),
+            default => redirect()->route('dashboard.presensi-sholat'),
+        };
+    })->name('admin.index');
+
     Route::get('/dashboard-presensi-sholat', function () {
         return view('dashboard_presensi_sholat');
     })->name('dashboard.presensi-sholat');

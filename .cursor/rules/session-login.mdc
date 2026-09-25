@@ -1,0 +1,18 @@
+---
+description: Session/login constraints that must be preserved
+alwaysApply: true
+---
+
+# Session / Login (wajib dipertahankan)
+
+1. **Jangan** tampilkan notifikasi “Sesi Berakhir / Sesi habis / session expired”.
+2. **Jangan** auto-logout saat user masih memakai sistem. Logout hanya lewat tombol Logout.
+3. `SESSION_LIFETIME=5256000`, `expire_on_close=false`.
+4. CSRF/419: recover diam-diam (keep-alive refresh token + retry). **Jangan** redirect ke login.
+5. Cookie persistent `muallimat_presensi` via `app/Support/PersistentLogin.php` + middleware `RestorePersistentLogin`. Restore identity ke `session('user')` (setara Auth::login di app ini). Set cookie saat login & saat authenticated; hapus **hanya** saat logout.
+6. `RouteServiceProvider::HOME` = `/admin` (bukan `/home`). GET `/home` → `admin.index`.
+7. Transient 500 (session lock, deadlock, gone away): retry GET sekali; `errors/500.blade.php` auto-reload sekali.
+8. `TrustProxies` `$proxies = '*'`.
+9. Keep-alive di halaman authenticated: ping berkala, tanpa concurrent overlap.
+
+Saat ubah auth/session: jangan kembalikan redirect ke `/home`, jangan alert sesi habis, jangan hapus `RestorePersistentLogin` tanpa pengganti setara.

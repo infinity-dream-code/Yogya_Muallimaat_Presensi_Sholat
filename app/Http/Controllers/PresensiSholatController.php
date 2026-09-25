@@ -51,7 +51,7 @@ class PresensiSholatController extends Controller
         if (!$username) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -167,7 +167,7 @@ class PresensiSholatController extends Controller
         if (!$username) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -270,7 +270,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -350,7 +354,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -422,7 +430,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -607,7 +619,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $bulan = $request->query('bulan', '');
@@ -674,7 +690,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $bulan = $request->query('bulan', now()->format('Y-m'));
@@ -704,7 +724,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $bulan = $request->query('bulan', now()->format('Y-m'));
@@ -734,7 +758,7 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return back()->with('error', 'Session tidak valid. Silakan login kembali.');
+            return back()->with('error', 'Data user tidak tersedia. Muat ulang halaman.');
         }
 
         $validated = $request->validate([
@@ -813,7 +837,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -878,7 +906,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');

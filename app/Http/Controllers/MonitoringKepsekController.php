@@ -597,7 +597,7 @@ class MonitoringKepsekController extends Controller
     {
         $token = session('user.token');
         if (! $token) {
-            return ['status' => 401, 'message' => 'Session tidak valid. Silakan login kembali.'];
+            return ['status' => 401, 'message' => 'Data user tidak tersedia. Muat ulang halaman.'];
         }
 
         $body = array_merge(['method' => $method, 'token' => $token], $this->withSessionContext($params));
