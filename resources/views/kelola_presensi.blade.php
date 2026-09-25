@@ -48,7 +48,6 @@
         ::-webkit-scrollbar-track{background:transparent}
         ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:99px}
 
-        /* ── SIDEBAR ── */
         .sidebar{
             width:var(--sw);
             background: linear-gradient(180deg, #1e1b4b 0%, #0f0d1e 100%);
@@ -99,7 +98,6 @@
         .sb-foot{margin-top:auto;padding:16px 20px;border-top:none;font-size:.75rem;color:#64748b;font-family:inherit}
         .sb-overlay{display:none;position:fixed;inset:0;background:rgba(15,23,42,.6);z-index:39;opacity:0;transition:opacity .2s}
 
-        /* ── MAIN ── */
         .main{flex:1;margin-left:var(--sw);display:flex;flex-direction:column;min-height:100vh}
         .topbar{
             background:var(--surface);border-bottom:1px solid var(--border);
@@ -123,13 +121,11 @@
         }
         .tb-btn:hover{background:var(--accentl);border-color:var(--accent);color:var(--accent)}
 
-        /* ── BODY ── */
         .body{padding:22px 28px 56px;width:100%;flex:1}
         .flash{display:flex;align-items:center;gap:9px;padding:10px 13px;border-radius:var(--rads);font-size:.84rem;font-weight:500;margin-bottom:16px}
         .flash-err{background:var(--rbg);color:var(--r);border:1px solid var(--rb)}
         .flash-ok{background:var(--gbg);color:var(--g);border:1px solid var(--gb)}
 
-        /* ── TOP CONTROLS ── */
         .ctrl-row{display:grid;grid-template-columns:auto 1fr;gap:10px;margin-bottom:12px;align-items:stretch}
         .date-card{
             background:var(--surface);border:1px solid var(--border);
@@ -160,7 +156,6 @@
         }
         .search-inp::placeholder{color:var(--t3)}
 
-        /* ── BULK PANEL ── */
         .bulk{
             background:var(--surface);border:1px solid var(--border);
             border-radius:var(--rad);padding:12px 16px;
@@ -177,6 +172,15 @@
             cursor:pointer;outline:none;transition:border-color .15s;
         }
         .bsel:focus{border-color:var(--accent)}
+        .selall-lbl{
+            display:flex;align-items:center;gap:6px;
+            padding:7px 10px;border:1px solid var(--border);
+            border-radius:var(--rads);background:var(--surface);
+            font-size:.82rem;color:var(--t1);font-weight:500;
+            cursor:pointer;user-select:none;transition:border-color .15s;
+        }
+        .selall-lbl:hover{border-color:var(--accent)}
+        .selall-lbl input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer}
         .btn-apply{
             display:inline-flex;align-items:center;gap:7px;
             padding:8px 14px;background:var(--accent);color:#fff;
@@ -187,15 +191,12 @@
         .btn-apply:hover{background:var(--accent2)}
         .btn-apply:disabled{opacity:.5;cursor:not-allowed}
 
-        /* ── SECTION HEADER ── */
         .sec{display:flex;align-items:center;gap:10px;margin-bottom:12px}
         .sec-txt{font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);white-space:nowrap}
         .sec-line{flex:1;height:1px;background:var(--border)}
 
-        /* ── GRID ── */
         .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
 
-        /* ── STUDENT CARD ── */
         .card-student{
             background:var(--surface);
             border:1px solid var(--border);
@@ -216,7 +217,6 @@
             box-shadow:0 0 0 3px rgba(26,107,58,.12),0 4px 16px rgba(26,107,58,.1);
         }
 
-        /* top strip accent bar */
         .card-student::before{
             content:'';
             display:block;height:3px;
@@ -267,14 +267,12 @@
             white-space:nowrap;flex-shrink:0;border:1px solid var(--border);
         }
 
-        /* ── SHOLAT CHIPS GRID ── */
         .sholat-chips{
             display:grid;
             grid-template-columns:repeat(5,1fr);
             gap:5px;
         }
 
-        /* ── CHIP REDESIGN ── */
         .chip{
             border:1px solid var(--border) !important;
             border-radius:10px !important;
@@ -325,7 +323,6 @@
             letter-spacing:-.01em !important;
         }
 
-        /* colored chips */
         .chip-sholat{
             background:var(--gbg) !important;
             color:var(--g) !important;
@@ -368,7 +365,6 @@
             pointer-events:none !important;
         }
 
-        /* Chip hover color variants */
         .chip-sholat:hover{box-shadow:0 6px 16px rgba(26,107,58,.2) !important}
         .chip-alpa:hover{box-shadow:0 6px 16px rgba(190,54,38,.2) !important}
         .chip-izin:hover{box-shadow:0 6px 16px rgba(168,93,10,.18) !important}
@@ -402,7 +398,6 @@
         .loader-txt{margin-top:10px;font-size:.8rem;color:var(--t3)}
         @keyframes spin{to{transform:rotate(360deg)}}
 
-        /* ── MODAL ── */
         .modal-overlay{
             position:fixed;inset:0;background:rgba(0,0,0,.55);
             backdrop-filter:blur(4px);z-index:200;
@@ -442,7 +437,6 @@
         }
         .modal-close:hover{background:var(--surface2);color:var(--t1)}
 
-        /* ── TOAST ── */
         .toast{
             position:fixed;bottom:22px;left:50%;
             transform:translateX(-50%);
@@ -456,7 +450,6 @@
         .toast.error{background:var(--surface);color:var(--r);border-color:var(--rb)}
         @keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(14px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
 
-        /* ── RESPONSIVE ── */
         @media(min-width:1400px){.grid{grid-template-columns:repeat(4,1fr)}}
         @media(min-width:1060px) and (max-width:1399px){.grid{grid-template-columns:repeat(3,1fr)}}
         @media(min-width:720px) and (max-width:1059px){.grid{grid-template-columns:repeat(2,1fr)}}
@@ -474,7 +467,7 @@
             .date-card{flex-wrap:wrap}
         }
         @media(max-width:600px){.grid{grid-template-columns:1fr}}
-        @media(max-width:500px){.bulk-ctrls{flex-direction:column;align-items:stretch}.bsel,.btn-apply{width:100%}}
+        @media(max-width:500px){.bulk-ctrls{flex-direction:column;align-items:stretch}.bsel,.btn-apply,.selall-lbl{width:100%}}
     </style>
 </head>
 <body>
@@ -545,6 +538,10 @@
                 <span class="bulk-badge" id="selectedMeta">0 terpilih</span>
             </div>
             <div class="bulk-ctrls">
+                <label class="selall-lbl" for="selectAllChk">
+                    <input type="checkbox" id="selectAllChk">
+                    Pilih Semua
+                </label>
                 <select id="filterMusyrifah" class="bsel"><option value="">Semua musyrifah</option></select>
                 <select id="filterUnit" class="bsel"><option value="">Semua unit</option></select>
                 <select id="sortUnit" class="bsel">
@@ -617,7 +614,6 @@
             if(card.dataset.fixed)return;
             card.dataset.fixed='1';
 
-            /* Wrap inner content in .card-inner */
             if(!card.querySelector('.card-inner')){
                 var inner=document.createElement('div');
                 inner.className='card-inner';
@@ -625,7 +621,6 @@
                 card.appendChild(inner);
             }
 
-            /* Upgrade .card-sub to show unit as badge */
             var sub=card.querySelector('.card-sub');
             if(sub&&!sub.querySelector('.unit-badge')){
                 var txt=(sub.textContent||'').replace('Unit:','').trim();
@@ -634,7 +629,6 @@
                 }
             }
 
-            /* Wrap chips */
             if(!card.querySelector('.sholat-chips')){
                 var chips=Array.from(card.querySelectorAll('.chip'));
                 if(chips.length){
@@ -646,7 +640,6 @@
             }
         });
 
-        /* Shorten chip labels */
         root.querySelectorAll('.chip').forEach(function(chip){
             var bot=chip.querySelector('.chip-bottom');
             if(!bot)return;
@@ -682,9 +675,19 @@
         });
     }
 
+    function syncSelectAllState(){
+        var all=document.querySelectorAll('.card-checkbox');
+        var checked=document.querySelectorAll('.card-checkbox:checked');
+        var sa=document.getElementById('selectAllChk');
+        if(!all.length){sa.checked=false;sa.indeterminate=false;return}
+        sa.checked=checked.length===all.length;
+        sa.indeterminate=checked.length>0&&checked.length<all.length;
+    }
+
     function upMeta(){
         var n=document.querySelectorAll('.card-checkbox:checked').length;
         document.getElementById('selectedMeta').textContent=n+' terpilih';
+        syncSelectAllState();
     }
 
     function syncChk(){
@@ -724,6 +727,8 @@
                     var lm=tmp.querySelector('.load-more-wrap');if(lm)list.appendChild(lm.cloneNode(true));
                 }else{
                     list.innerHTML=html;fixChips(list);
+                    var sa=document.getElementById('selectAllChk');
+                    sa.checked=false;sa.indeterminate=false;
                 }
                 T=tanggal;
                 if(!append)setDate(tanggal);
@@ -770,6 +775,12 @@
 
         ['filterMusyrifah','filterUnit','sortUnit'].forEach(function(id){
             document.getElementById(id).addEventListener('change',function(){loadData(T,1,false)});
+        });
+
+        document.getElementById('selectAllChk').addEventListener('change',function(){
+            var checked=this.checked;
+            document.querySelectorAll('.card-checkbox').forEach(function(cb){cb.checked=checked});
+            syncChk();upMeta();
         });
 
         document.getElementById('btnBulkApply').addEventListener('click',function(){
