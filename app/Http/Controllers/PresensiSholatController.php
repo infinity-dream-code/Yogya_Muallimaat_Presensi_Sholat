@@ -505,26 +505,33 @@ class PresensiSholatController extends Controller
         });
 
         $allUnits = [];
-        $allMus   = [];
+        $nocusts  = [];
         foreach ($all as $e) {
             $u = (string) ($e['UNIT'] ?? $e['Unit'] ?? '');
             if ($u !== '' && ! in_array($u, $allUnits, true)) {
                 $allUnits[] = $u;
             }
+            $nocust = trim((string) ($e['NOCUST'] ?? $e['NIS'] ?? $e['nocust'] ?? ''));
+            if ($nocust !== '') {
+                $nocusts[] = $nocust;
+            }
+        }
 
-            $m = $e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? null;
-            if ($m !== null && $m !== '' && strtoupper((string) $m) !== 'SYSTEM') {
-                if (! in_array((string) $m, $allMus, true)) {
-                    $allMus[] = (string) $m;
-                }
+        // Musrifah dari scctcust.musrifah (bukan USER_1..5 / API Musrifah)
+        $musMap = $this->musrifahMapByNocust($nocusts);
+        foreach ($all as &$e) {
+            if (! is_array($e)) {
+                continue;
             }
-            for ($i = 1; $i <= 5; $i++) {
-                $k = 'USER_' . $i;
-                $v = $e[$k] ?? null;
-                if ($v !== null && $v !== '' && strtoupper((string) $v) !== 'SYSTEM' && ! in_array((string) $v, $allMus, true)) {
-                    $allMus[] = (string) $v;
-                }
-            }
+            $nocust = trim((string) ($e['NOCUST'] ?? $e['NIS'] ?? $e['nocust'] ?? ''));
+            $e['Musrifah'] = ($nocust !== '' && isset($musMap[$nocust])) ? $musMap[$nocust] : '';
+        }
+        unset($e);
+
+        $allMus = $this->musrifahListFromScctcust();
+        if ($allMus === []) {
+            $allMus = array_values(array_unique(array_filter(array_values($musMap))));
+            sort($allMus);
         }
 
         if ($search !== '') {
@@ -548,24 +555,9 @@ class PresensiSholatController extends Controller
         if ($musyrifah !== '') {
             $m = mb_strtolower($musyrifah);
             $all = array_values(array_filter($all, function ($e) use ($m) {
-                $candidates = [];
-                $mus = $e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? null;
-                if ($mus !== null && $mus !== '') {
-                    $candidates[] = (string) $mus;
-                }
-                for ($i = 1; $i <= 5; $i++) {
-                    $k = 'USER_' . $i;
-                    $v = $e[$k] ?? null;
-                    if ($v !== null && $v !== '') {
-                        $candidates[] = (string) $v;
-                    }
-                }
-                foreach ($candidates as $c) {
-                    if (mb_strtolower($c) === $m) {
-                        return true;
-                    }
-                }
-                return false;
+                $mus = trim((string) ($e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? ''));
+
+                return $mus !== '' && mb_strtolower($mus) === $m;
             }));
         }
 
@@ -1173,6 +1165,70 @@ class PresensiSholatController extends Controller
         usort($list, fn($a, $b) => strcasecmp($a['label'], $b['label']));
 
         return $list;
+    }
+
+    /**
+     * Map NOCUST => musrifah dari scctcust.
+     *
+     * @param  list<string>  $nocusts
+     * @return array<string, string>
+     */
+    private function musrifahMapByNocust(array $nocusts): array
+    {
+        $map = [];
+        $nocusts = array_values(array_unique(array_filter(array_map('trim', $nocusts))));
+        if ($nocusts === []) {
+            return $map;
+        }
+
+        try {
+            foreach (array_chunk($nocusts, 500) as $chunk) {
+                $rows = DB::table('scctcust')
+                    ->whereIn(DB::raw('TRIM(NOCUST)'), $chunk)
+                    ->selectRaw('TRIM(NOCUST) as nocust, TRIM(musrifah) as musrifah')
+                    ->get();
+
+                foreach ($rows as $row) {
+                    $nocust = trim((string) ($row->nocust ?? ''));
+                    $mus = trim((string) ($row->musrifah ?? ''));
+                    if ($nocust === '' || $mus === '' || strtoupper($mus) === 'SYSTEM') {
+                        continue;
+                    }
+                    $map[$nocust] = $mus;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('KelolaPresensi scctcust musrifah lookup failed', ['message' => $e->getMessage()]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Daftar distinct musrifah dari scctcust (untuk dropdown filter).
+     *
+     * @return list<string>
+     */
+    private function musrifahListFromScctcust(): array
+    {
+        try {
+            return DB::table('scctcust')
+                ->whereNotNull('musrifah')
+                ->whereRaw("TRIM(musrifah) <> ''")
+                ->whereRaw("UPPER(TRIM(musrifah)) <> 'SYSTEM'")
+                ->distinct()
+                ->orderBy('musrifah')
+                ->pluck('musrifah')
+                ->map(static fn ($m) => trim((string) $m))
+                ->filter(static fn ($m) => $m !== '')
+                ->unique()
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('KelolaPresensi scctcust musrifah list failed', ['message' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     private function generateJwt(array $payload): string

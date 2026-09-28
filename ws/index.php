@@ -70,7 +70,7 @@ const SECURE_INPUT_DANGEROUS_EXT = [
     'jar',
 ];
 
-const SECURE_INPUT_ALLOWED_METHODS = ['login', 'loginApproval', 'getTahunAkademik', 'getPrestasiKatalog', 'submitPrestasi', 'approval', 'manageUsers', 'manageKatalog', 'searchSiswa', 'manageCatatanKepribadian', 'manageTahfid'];
+const SECURE_INPUT_ALLOWED_METHODS = ['login', 'loginApproval', 'getTahunAkademik', 'getPrestasiKatalog', 'submitPrestasi', 'approval', 'manageUsers', 'manageKatalog', 'searchSiswa', 'getMusrifah', 'manageCatatanKepribadian', 'manageTahfid'];
 
 function writeLog(string $event, array $context = []): void
 {
@@ -2158,7 +2158,8 @@ function fetchSiswaByNocust(PDO $pdo, string $nocust, string $userCode01): ?arra
             TRIM(c.NMCUST) AS nmcust,
             TRIM(c.DESC02) AS kelas,
             TRIM(c.CODE01) AS code01,
-            TRIM(ms.DESC01) AS sekolah
+            TRIM(ms.DESC01) AS sekolah,
+            TRIM(c.musrifah) AS musrifah
         FROM scctcust c
         LEFT JOIN mst_sekolah ms ON ms.CODE01 = c.CODE01
         WHERE TRIM(c.NOCUST) = :nocust
@@ -2172,6 +2173,35 @@ function fetchSiswaByNocust(PDO $pdo, string $nocust, string $userCode01): ?arra
     $stmt->execute();
     $row = $stmt->fetch();
     return $row ?: null;
+}
+
+function doGetMusrifah(array $auth): array
+{
+    assertApprovalRole($auth);
+    $pdo = dbConnectPdo();
+    $userCode01 = staffUnitCode01($auth);
+    $sql = "
+        SELECT DISTINCT TRIM(c.musrifah) AS musrifah
+        FROM scctcust c
+        WHERE c.musrifah IS NOT NULL
+          AND TRIM(c.musrifah) <> ''
+          AND UPPER(TRIM(c.musrifah)) <> 'SYSTEM'
+          AND (:code01_empty = '' OR c.CODE01 = :code01_value)
+        ORDER BY musrifah ASC
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(":code01_empty", $userCode01, PDO::PARAM_STR);
+    $stmt->bindValue(":code01_value", $userCode01, PDO::PARAM_STR);
+    $stmt->execute();
+    $items = [];
+    foreach ($stmt->fetchAll() ?: [] as $row) {
+        $m = trim((string) ($row["musrifah"] ?? ""));
+        if ($m !== "" && !in_array($m, $items, true)) {
+            $items[] = $m;
+        }
+    }
+
+    return ["items" => $items];
 }
 
 function mapCatatanKepribadianRow(array $row): array
@@ -2214,7 +2244,8 @@ function doSearchSiswa(array $req, array $auth): array
             TRIM(c.NMCUST) AS nmcust,
             TRIM(c.DESC02) AS kelas,
             TRIM(c.CODE01) AS code01,
-            TRIM(ms.DESC01) AS sekolah
+            TRIM(ms.DESC01) AS sekolah,
+            TRIM(c.musrifah) AS musrifah
         FROM scctcust c
         LEFT JOIN mst_sekolah ms ON ms.CODE01 = c.CODE01
         WHERE (c.NOCUST LIKE :q1 OR c.NMCUST LIKE :q2)
@@ -2245,6 +2276,7 @@ function doSearchSiswa(array $req, array $auth): array
             "kelas" => trim((string) ($row["kelas"] ?? "")),
             "code01" => trim((string) ($row["code01"] ?? "")),
             "sekolah" => trim((string) ($row["sekolah"] ?? "")),
+            "musrifah" => trim((string) ($row["musrifah"] ?? "")),
         ];
     }
 
@@ -4159,6 +4191,14 @@ try {
     if ($method === "searchSiswa") {
         writeLog("METHOD_SEARCH_SISWA", ["q" => (string) ($req["q"] ?? "")]);
         $data = doSearchSiswa($req, $decoded);
+        http_response_code(200);
+        echo json_encode(["status" => 200, "data" => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($method === "getMusrifah") {
+        writeLog("METHOD_GET_MUSRIFAH");
+        $data = doGetMusrifah($decoded);
         http_response_code(200);
         echo json_encode(["status" => 200, "data" => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
