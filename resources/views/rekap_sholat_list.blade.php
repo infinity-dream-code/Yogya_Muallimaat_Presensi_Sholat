@@ -22,6 +22,7 @@
         $bulanParts = explode('-', $bulan);
         $bulanDisplay = count($bulanParts) >= 2 ? (int) $bulanParts[1] . '/' . $bulanParts[0] : $bulan;
         $searchText = strtolower($title . ' ' . $nisVal);
+        $entryUpper = array_change_key_case($entry, CASE_UPPER);
     @endphp
     <div class="card card-rekap card-rekap-student" data-search="{{ $searchText }}" data-unit="{{ $code01 }}" data-unit-label="{{ $unitVal ?? '' }}">
         <div class="card-header">
@@ -36,10 +37,13 @@
         <div class="badge-wrap">
             @foreach($badges as $b)
                 @php
-                    $val = $entry[$b['key']] ?? $entry[str_replace('_', ' ', $b['key'])] ?? null;
+                    $val = $b['key'] === 'TOTAL_HARI' ? null : ($entryUpper['TOTAL_' . $b['key']] ?? null);
+                    if ($val === null || $val === '') {
+                        $val = $entryUpper[$b['key']] ?? $entryUpper[str_replace('_', ' ', $b['key'])] ?? null;
+                    }
                     if (($val === null || $val === '') && !empty($b['altKeys'])) {
                         foreach ($b['altKeys'] as $ak) {
-                            $v = $entry[$ak] ?? null;
+                            $v = $entryUpper[$ak] ?? null;
                             if ($v !== null && $v !== '') { $val = $v; break; }
                         }
                     }
@@ -58,7 +62,7 @@
                     $k2 = $prefix . $b['key'];
                     $num = array_search($prefix, array_values($sholatNames)) + 1;
                     $k3 = 'SHOLAT_' . $num . '_' . $b['key'];
-                    $v = $entry[$k] ?? $entry[$k2] ?? $entry[$k3] ?? 0;
+                    $v = $entryUpper[$k] ?? $entryUpper[$k2] ?? $entryUpper[$k3] ?? 0;
                     $subBadges[] = ['label' => $b['label'], 'class' => $b['class'], 'val' => $v !== null && $v !== '' ? $v : 0];
                 }
             @endphp
