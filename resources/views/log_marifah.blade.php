@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Log Marifah</title>
+    <title>Log Musyrifah</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -236,7 +236,7 @@
         <button class="burger" id="drawerToggle" type="button" aria-label="Menu">
             <span></span><span></span><span></span>
         </button>
-        <div class="title">Log Marifah</div>
+        <div class="title">Log Musyrifah</div>
     </div>
 
     <div class="content">
@@ -335,7 +335,7 @@
                     @endif
                 </div>
             @empty
-                <div class="empty">Tidak ada data log marifah untuk tanggal ini.</div>
+                <div class="empty">Tidak ada data log Musyrifah untuk tanggal ini.</div>
             @endforelse
         </div>
     </div>
@@ -372,7 +372,7 @@
         <li class="drawer-item">
             <a href="{{ route('presensi.log-marifah') }}" class="drawer-link active">
                 <span class="icon"><i class="fas fa-rectangle-list"></i></span>
-                <span>Log Marifah</span>
+                <span>Log Musyrifah</span>
             </a>
         </li>
         <li class="drawer-item">

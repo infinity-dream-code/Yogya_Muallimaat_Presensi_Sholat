@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\PersistentLogin;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -15,7 +16,15 @@ class CheckAuth
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!session()->has('user') || !session('user.username')) {
+        try {
+            if (! session()->has('user') || ! session('user.username')) {
+                PersistentLogin::restoreIntoSession($request);
+            }
+        } catch (\Throwable $e) {
+            //
+        }
+
+        if (! session()->has('user') || ! session('user.username')) {
             return redirect()->route('login.form');
         }
 

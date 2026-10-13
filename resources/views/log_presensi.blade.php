@@ -469,7 +469,7 @@
         <li class="drawer-item">
             <a href="{{ route('presensi.log-marifah') }}" class="drawer-link">
                 <span class="icon"><i class="fas fa-rectangle-list"></i></span>
-                <span>Log Marifah</span>
+                <span>Log Musyrifah</span>
             </a>
         </li>
         <li class="drawer-item">

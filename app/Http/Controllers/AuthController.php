@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\CyberKey;
 use App\Services\LaporanSsoService;
+use App\Support\PersistentLogin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -15,22 +16,10 @@ class AuthController extends Controller
 
     public function showLogin()
     {
+        PersistentLogin::restoreIntoSession(request());
+
         if (session()->has('user') && session('user.username')) {
-            if (session('user.app') === 'presensi-sholat') {
-                return redirect()->route('dashboard.presensi-sholat');
-            }
-            if (session('user.app') === 'approval-prestasi') {
-                return redirect()->route('approval.prestasi.index');
-            }
-            if (session('user.app') === 'catatan-kepribadian') {
-                return redirect()->route('catatan.kepribadian.index');
-            }
-            if (session('user.app') === 'tahfid') {
-                if (strtolower((string) session('user.role', '')) === 'siswa') {
-                    return redirect()->route('tahfid.siswa.index');
-                }
-                return redirect()->route('tahfid.jadwal.index');
-            }
+            return redirect()->route('admin.index');
         }
 
         return view('login');
@@ -38,7 +27,10 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
-        $request->session()->flush();
+        PersistentLogin::forget();
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
         return redirect()->route('login.form');
     }
 
@@ -184,6 +176,7 @@ class AuthController extends Controller
             'approval_token' => $token,
             'app' => $app,
         ]);
+        PersistentLogin::set(session('user'));
 
         return redirect()->route($homeRoute);
     }
@@ -253,6 +246,7 @@ class AuthController extends Controller
                 'app' => 'tahfid',
                 'user_type' => 'staff',
             ]);
+            PersistentLogin::set(session('user'));
 
             return redirect()->route('tahfid.jadwal.index');
         }
@@ -315,6 +309,7 @@ class AuthController extends Controller
             'app' => 'tahfid',
             'user_type' => 'siswa',
         ]);
+        PersistentLogin::set(session('user'));
 
         return redirect()->route('tahfid.siswa.index');
     }
@@ -425,6 +420,7 @@ class AuthController extends Controller
                 'username' => $username,
                 'app'      => 'presensi-sholat',
             ]);
+            PersistentLogin::set(session('user'));
 
             return redirect()
                 ->route('dashboard.presensi-sholat')
@@ -516,7 +512,7 @@ class AuthController extends Controller
 
         $username = session('user.username');
         if (!$username) {
-            return back()->with('password_error', 'Session tidak valid. Silakan login kembali.');
+            return back()->with('password_error', 'Data user tidak tersedia. Muat ulang halaman.');
         }
 
         $apiBaseUrl = self::API_BASE_URL_PRESENSI_SHOLAT;

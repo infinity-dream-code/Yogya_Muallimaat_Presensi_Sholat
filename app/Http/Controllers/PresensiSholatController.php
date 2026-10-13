@@ -51,7 +51,7 @@ class PresensiSholatController extends Controller
         if (!$username) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -102,8 +102,6 @@ class PresensiSholatController extends Controller
             'data' => $data,
         ]);
 
-        // Format respon Presensi Sholat berbeda dengan perizinan.
-        // Contoh: [{"STATUS":"NOTOK","RESULT":"TELAH_MELAKUKAN_PRESENSI","RES":"PRESENSI TELAH DILAKUKAN"}]
         if (is_array($data) && isset($data[0])) {
             $item = $data[0];
             $statusFlag = $item['STATUS'] ?? null;
@@ -118,7 +116,6 @@ class PresensiSholatController extends Controller
                 ]);
             }
 
-            // Khusus jika sudah pernah presensi, beri pesan yang jelas
             if ($statusFlag === 'NOTOK' && $resultCode === 'TELAH_MELAKUKAN_PRESENSI') {
                 return response()->json([
                     'ok' => false,
@@ -134,7 +131,6 @@ class PresensiSholatController extends Controller
             ], 422);
         }
 
-        // Fallback untuk format lain
         if (isset($data['KodeRespon']) && (int) $data['KodeRespon'] === 1) {
             return response()->json([
                 'ok' => true,
@@ -167,7 +163,7 @@ class PresensiSholatController extends Controller
         if (!$username) {
             return response()->json([
                 'ok' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -270,7 +266,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -280,7 +280,6 @@ class PresensiSholatController extends Controller
             $tanggal = $today;
         }
 
-        // Jika tanggal = hari ini pakai LogMarifahTodayRequest, selain itu LogMarifahRequest
         if ($tanggal === $today) {
             $payload = [
                 'METHOD'   => 'LogMarifahTodayRequest',
@@ -317,7 +316,6 @@ class PresensiSholatController extends Controller
                 ]);
 
                 if (is_array($data)) {
-                    // API mengembalikan { "datas": [ ... ] }
                     if (isset($data['datas']) && is_array($data['datas'])) {
                         $entries = $data['datas'];
                     } else {
@@ -350,7 +348,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -422,7 +424,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -498,29 +504,34 @@ class PresensiSholatController extends Controller
             return $list;
         });
 
-        // Simpan list unit & musyrifah dari seluruh data (untuk filter dropdown)
         $allUnits = [];
-        $allMus   = [];
+        $nocusts  = [];
         foreach ($all as $e) {
             $u = (string) ($e['UNIT'] ?? $e['Unit'] ?? '');
             if ($u !== '' && ! in_array($u, $allUnits, true)) {
                 $allUnits[] = $u;
             }
+            $nocust = trim((string) ($e['NOCUST'] ?? $e['NIS'] ?? $e['nocust'] ?? ''));
+            if ($nocust !== '') {
+                $nocusts[] = $nocust;
+            }
+        }
 
-            // Musyrifah: kolom khusus jika ada, lalu USER_1..5 selain "System"
-            $m = $e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? null;
-            if ($m !== null && $m !== '' && strtoupper((string) $m) !== 'SYSTEM') {
-                if (! in_array((string) $m, $allMus, true)) {
-                    $allMus[] = (string) $m;
-                }
+        // Musrifah dari scctcust.musrifah (bukan USER_1..5 / API Musrifah)
+        $musMap = $this->musrifahMapByNocust($nocusts);
+        foreach ($all as &$e) {
+            if (! is_array($e)) {
+                continue;
             }
-            for ($i = 1; $i <= 5; $i++) {
-                $k = 'USER_' . $i;
-                $v = $e[$k] ?? null;
-                if ($v !== null && $v !== '' && strtoupper((string) $v) !== 'SYSTEM' && ! in_array((string) $v, $allMus, true)) {
-                    $allMus[] = (string) $v;
-                }
-            }
+            $nocust = trim((string) ($e['NOCUST'] ?? $e['NIS'] ?? $e['nocust'] ?? ''));
+            $e['Musrifah'] = ($nocust !== '' && isset($musMap[$nocust])) ? $musMap[$nocust] : '';
+        }
+        unset($e);
+
+        $allMus = $this->musrifahListFromScctcust();
+        if ($allMus === []) {
+            $allMus = array_values(array_unique(array_filter(array_values($musMap))));
+            sort($allMus);
         }
 
         if ($search !== '') {
@@ -544,16 +555,9 @@ class PresensiSholatController extends Controller
         if ($musyrifah !== '') {
             $m = mb_strtolower($musyrifah);
             $all = array_values(array_filter($all, function ($e) use ($m) {
-                $first = '';
-                for ($i = 1; $i <= 5; $i++) {
-                    $k = 'USER_' . $i;
-                    $v = $e[$k] ?? null;
-                    if ($v !== null && $v !== '') {
-                        $first = (string) $v;
-                        break;
-                    }
-                }
-                return mb_strtolower($first) === $m;
+                $mus = trim((string) ($e['Musrifah'] ?? $e['MUSRIFAH'] ?? $e['Musftr'] ?? ''));
+
+                return $mus !== '' && mb_strtolower($mus) === $m;
             }));
         }
 
@@ -607,7 +611,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $bulan = $request->query('bulan', '');
@@ -674,7 +682,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $bulan = $request->query('bulan', now()->format('Y-m'));
@@ -704,7 +716,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $bulan = $request->query('bulan', now()->format('Y-m'));
@@ -734,7 +750,7 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return back()->with('error', 'Session tidak valid. Silakan login kembali.');
+            return back()->with('error', 'Data user tidak tersedia. Muat ulang halaman.');
         }
 
         $validated = $request->validate([
@@ -813,7 +829,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -878,7 +898,11 @@ class PresensiSholatController extends Controller
 
         $username = session('user.username');
         if (! $username) {
-            return redirect()->route('login.form');
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $tanggal = $request->query('tanggal');
@@ -936,10 +960,6 @@ class PresensiSholatController extends Controller
         return $pdf->download($filename);
     }
 
-    /**
-     * Ratakan data rekap: bila API mengembalikan grup (datas/siswa), ambil tiap siswa.
-     * Jangan masukkan record parent — hanya siswa dengan data per-waktu.
-     */
     private function flattenRekapDatas(array $entries): array
     {
         $flat = [];
@@ -1005,9 +1025,6 @@ class PresensiSholatController extends Controller
         });
     }
 
-    /**
-     * Samakan UNIT dengan mst_sekolah via CODE01 (scctcust), hilangkan duplikat case seperti MTS/MTs.
-     */
     private function enrichRekapWithSekolah(array $entries): array
     {
         if ($entries === []) {
@@ -1105,7 +1122,6 @@ class PresensiSholatController extends Controller
             }
 
             if ($code01 === '' && $rawUnit !== '') {
-                // Tetap dedupe case: pakai label upper sebagai nilai filter
                 $code01 = 'UNIT:' . mb_strtoupper($rawUnit);
                 $sekolah = mb_strtoupper($rawUnit);
             }
@@ -1146,9 +1162,73 @@ class PresensiSholatController extends Controller
         }
 
         $list = array_values($units);
-        usort($list, fn ($a, $b) => strcasecmp($a['label'], $b['label']));
+        usort($list, fn($a, $b) => strcasecmp($a['label'], $b['label']));
 
         return $list;
+    }
+
+    /**
+     * Map NOCUST => musrifah dari scctcust.
+     *
+     * @param  list<string>  $nocusts
+     * @return array<string, string>
+     */
+    private function musrifahMapByNocust(array $nocusts): array
+    {
+        $map = [];
+        $nocusts = array_values(array_unique(array_filter(array_map('trim', $nocusts))));
+        if ($nocusts === []) {
+            return $map;
+        }
+
+        try {
+            foreach (array_chunk($nocusts, 500) as $chunk) {
+                $rows = DB::table('scctcust')
+                    ->whereIn(DB::raw('TRIM(NOCUST)'), $chunk)
+                    ->selectRaw('TRIM(NOCUST) as nocust, TRIM(musrifah) as musrifah')
+                    ->get();
+
+                foreach ($rows as $row) {
+                    $nocust = trim((string) ($row->nocust ?? ''));
+                    $mus = trim((string) ($row->musrifah ?? ''));
+                    if ($nocust === '' || $mus === '' || strtoupper($mus) === 'SYSTEM') {
+                        continue;
+                    }
+                    $map[$nocust] = $mus;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('KelolaPresensi scctcust musrifah lookup failed', ['message' => $e->getMessage()]);
+        }
+
+        return $map;
+    }
+
+    /**
+     * Daftar distinct musrifah dari scctcust (untuk dropdown filter).
+     *
+     * @return list<string>
+     */
+    private function musrifahListFromScctcust(): array
+    {
+        try {
+            return DB::table('scctcust')
+                ->whereNotNull('musrifah')
+                ->whereRaw("TRIM(musrifah) <> ''")
+                ->whereRaw("UPPER(TRIM(musrifah)) <> 'SYSTEM'")
+                ->distinct()
+                ->orderBy('musrifah')
+                ->pluck('musrifah')
+                ->map(static fn ($m) => trim((string) $m))
+                ->filter(static fn ($m) => $m !== '')
+                ->unique()
+                ->values()
+                ->all();
+        } catch (\Throwable $e) {
+            Log::warning('KelolaPresensi scctcust musrifah list failed', ['message' => $e->getMessage()]);
+
+            return [];
+        }
     }
 
     private function generateJwt(array $payload): string

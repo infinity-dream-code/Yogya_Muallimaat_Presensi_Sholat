@@ -22,7 +22,7 @@ class PerizinanController extends Controller
         if (!$username) {
             return response()->json([
                 'success' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -194,7 +194,7 @@ class PerizinanController extends Controller
         if (!$username) {
             return response()->json([
                 'success' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -369,7 +369,7 @@ class PerizinanController extends Controller
         if (!$username) {
             return response()->json([
                 'success' => false,
-                'message' => 'Session tidak valid. Silakan login kembali.',
+                'message' => 'Data user tidak tersedia. Muat ulang halaman.',
             ], 401);
         }
 
@@ -535,8 +535,12 @@ class PerizinanController extends Controller
     public function showLaporan()
     {
         $username = session('user.username');
-        if (!$username) {
-            return redirect()->route('login.form');
+        if (! $username) {
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
         }
 
         $now = now()->timestamp;

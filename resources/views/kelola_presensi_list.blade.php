@@ -16,17 +16,10 @@
             }
         }
 
-        // Musyrifah: pakai kolom khusus jika ada, fallback ke USER_1..5 selain "System"
-        $musyrifah = $entry['Musrifah'] ?? $entry['MUSRIFAH'] ?? $entry['Musftr'] ?? '';
-        if ($musyrifah === '' || strtoupper($musyrifah) === 'SYSTEM') {
-            for ($i = 1; $i <= 5; $i++) {
-                $k = 'USER_' . $i;
-                $v = $entry[$k] ?? null;
-                if ($v !== null && $v !== '' && strtoupper((string) $v) !== 'SYSTEM') {
-                    $musyrifah = (string) $v;
-                    break;
-                }
-            }
+        // Musyrifah: dari scctcust.musrifah (sudah di-enrich di controller)
+        $musyrifah = trim((string) ($entry['Musrifah'] ?? $entry['MUSRIFAH'] ?? $entry['Musftr'] ?? ''));
+        if (strtoupper($musyrifah) === 'SYSTEM') {
+            $musyrifah = '';
         }
     @endphp
     <div class="card card-student" data-search="{{ $searchText }}" data-unit="{{ $unitVal ?? '' }}" data-musyrifah="{{ $musyrifah }}">

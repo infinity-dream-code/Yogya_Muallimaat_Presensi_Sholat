@@ -174,7 +174,7 @@ class ApprovalKatalogController extends Controller
     {
         $token = trim((string) session('user.approval_token', ''));
         if ($token === '') {
-            return ['error' => 'Sesi approval berakhir. Silakan login ulang.', 'data' => []];
+            return ['error' => 'Token tidak tersedia. Muat ulang halaman, lalu coba lagi.', 'data' => []];
         }
 
         $wsUrl = rtrim((string) env('APPROVAL_WS_URL', 'http://103.23.103.43/ws_client/mualimat_reward/index.php'), '/');
