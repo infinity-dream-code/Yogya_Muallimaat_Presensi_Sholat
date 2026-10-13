@@ -70,7 +70,7 @@ const SECURE_INPUT_DANGEROUS_EXT = [
     'jar',
 ];
 
-const SECURE_INPUT_ALLOWED_METHODS = ['login', 'loginApproval', 'getTahunAkademik', 'getPrestasiKatalog', 'submitPrestasi', 'approval', 'manageUsers', 'manageKatalog', 'searchSiswa', 'manageCatatanKepribadian', 'manageTahfid'];
+const SECURE_INPUT_ALLOWED_METHODS = ['login', 'loginApproval', 'getTahunAkademik', 'getPrestasiKatalog', 'getPrestasiSaya', 'submitPrestasi', 'approval', 'manageUsers', 'manageKatalog', 'searchSiswa', 'getMusrifah', 'manageCatatanKepribadian', 'manageTahfid'];
 
 function writeLog(string $event, array $context = []): void
 {
@@ -1975,22 +1975,156 @@ function allowedUploadHosts(): array
     return array_values(array_unique($hosts));
 }
 
-function doSubmitPrestasi(array $req, array $auth): array
+function assertSiswaSession(array $auth): array
 {
-    $fields = validatePrestasiInput($req);
-
     $custId = (string) ($auth["custid"] ?? "");
     $nocust = (string) ($auth["nocust"] ?? "");
     $nmcust = (string) ($auth["nmcust"] ?? "");
     $kelas  = (string) ($auth["kelas"] ?? "");
 
     if ($custId === "" || $nocust === "" || !secure_validate_nocust($nocust)) {
-        writeLog("SUBMIT_INVALID_SESSION", ["custid" => $custId, "nocust" => $nocust]);
+        writeLog("SISWA_INVALID_SESSION", ["custid" => $custId, "nocust" => $nocust]);
         fail(401, "Sesi tidak valid, silakan login ulang");
     }
 
+    return [
+        "custid" => $custId,
+        "nocust" => $nocust,
+        "nmcust" => $nmcust,
+        "kelas" => $kelas,
+    ];
+}
+
+function mapSiswaPrestasiRow(array $row): array
+{
+    $status = normalizeRewardApprovalStatus($row["isapproved"] ?? "pending");
+    $catatan = trim((string) ($row["catatan_admin"] ?? ""));
+    $nilai = secure_validate_nilai_penghargaan((string) ($row["nilai_penghargaan"] ?? "0"));
+    if ($nilai === null) {
+        $nilai = "0.00";
+    }
+
+    return [
+        "id" => (int) ($row["id"] ?? 0),
+        "nisn" => (string) ($row["nisn"] ?? ""),
+        "jenis_prestasi" => (string) ($row["jenis_prestasi"] ?? ""),
+        "prestasi_kategori_id" => (int) ($row["prestasi_kategori_id"] ?? 0),
+        "prestasi_tingkat_id" => (int) ($row["prestasi_tingkat_id"] ?? 0),
+        "prestasi_poin_id" => (int) ($row["prestasi_poin_id"] ?? 0),
+        "keterangan" => (string) ($row["keterangan"] ?? ""),
+        "penyelenggara" => (string) ($row["penyelenggara"] ?? ""),
+        "no_sertifikat" => (string) ($row["no_sertifikat"] ?? ""),
+        "nilai_penghargaan" => $nilai,
+        "tahun_akademik" => (string) ($row["bta"] ?? ""),
+        "semester" => (int) ($row["semester"] ?? 1),
+        "url" => (string) ($row["url"] ?? ""),
+        "isapproved" => $status,
+        "catatan_admin" => $status === "canceled" ? $catatan : "",
+        "can_edit" => $status === "canceled",
+        "created_at" => (string) ($row["created_at"] ?? ""),
+        "updated_at" => (string) ($row["updated_at"] ?? ""),
+    ];
+}
+
+function doGetPrestasiSaya(array $auth): array
+{
+    $siswa = assertSiswaSession($auth);
+    $pdo = dbConnectPdo();
+    ensureCatatanAdminColumn($pdo);
+
+    $sql = "
+        SELECT
+            ar.id,
+            ar.nisn,
+            ar.jenis_prestasi,
+            ar.prestasi_kategori_id,
+            ar.prestasi_tingkat_id,
+            ar.prestasi_poin_id,
+            ar.keterangan,
+            ar.penyelenggara,
+            ar.no_sertifikat,
+            ar.nilai_penghargaan,
+            ar.bta,
+            ar.semester,
+            ar.url,
+            ar.isapproved,
+            ar.catatan_admin,
+            ar.created_at,
+            ar.updated_at
+        FROM aka_reward ar
+        WHERE ar.custid = :custid AND ar.nocust = :nocust
+        ORDER BY ar.created_at DESC, ar.id DESC
+        LIMIT 200
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(":custid", $siswa["custid"], PDO::PARAM_STR);
+    $stmt->bindValue(":nocust", $siswa["nocust"], PDO::PARAM_STR);
+    $stmt->execute();
+
+    $items = [];
+    $jumlah = ["pending" => 0, "approve" => 0, "canceled" => 0];
+    foreach ($stmt->fetchAll() ?: [] as $row) {
+        $item = mapSiswaPrestasiRow($row);
+        $items[] = $item;
+        if (isset($jumlah[$item["isapproved"]])) {
+            $jumlah[$item["isapproved"]]++;
+        }
+    }
+
+    $sumStmt = $pdo->prepare("
+        SELECT COALESCE(SUM(nilai_penghargaan), 0)
+        FROM aka_reward
+        WHERE custid = :custid AND nocust = :nocust AND isapproved = 'approve'
+    ");
+    $sumStmt->bindValue(":custid", $siswa["custid"], PDO::PARAM_STR);
+    $sumStmt->bindValue(":nocust", $siswa["nocust"], PDO::PARAM_STR);
+    $sumStmt->execute();
+    $total = secure_validate_nilai_penghargaan((string) $sumStmt->fetchColumn());
+    if ($total === null) {
+        $total = "0.00";
+    }
+
+    return [
+        "items" => $items,
+        "total_skor" => $total,
+        "jumlah" => $jumlah,
+    ];
+}
+
+function assertOwnedCanceledReward(PDO $pdo, int $id, string $custId, string $nocust): void
+{
+    $stmt = $pdo->prepare("
+        SELECT isapproved FROM aka_reward
+        WHERE id = :id AND custid = :custid AND nocust = :nocust
+        LIMIT 1
+    ");
+    $stmt->bindValue(":id", $id, PDO::PARAM_INT);
+    $stmt->bindValue(":custid", $custId, PDO::PARAM_STR);
+    $stmt->bindValue(":nocust", $nocust, PDO::PARAM_STR);
+    $stmt->execute();
+    $row = $stmt->fetch();
+    if (!$row) {
+        fail(404, "Pengajuan tidak ditemukan");
+    }
+    if (normalizeRewardApprovalStatus($row["isapproved"] ?? "") !== "canceled") {
+        fail(422, "Hanya pengajuan yang ditolak yang bisa dikirim ulang");
+    }
+}
+
+function doSubmitPrestasi(array $req, array $auth): array
+{
+    $fields = validatePrestasiInput($req);
+    $siswa = assertSiswaSession($auth);
+    $custId = $siswa["custid"];
+    $nocust = $siswa["nocust"];
+    $nmcust = $siswa["nmcust"];
+    $kelas = $siswa["kelas"];
+
+    $editId = secure_validate_positive_id((string) ($req["id"] ?? ""));
+
     $pdo = dbConnectPdo();
     ensureAutoIncrementInsert($pdo);
+    ensureCatatanAdminColumn($pdo);
     assertTahunAkademikExists($pdo, $fields["tahun_akademik"]);
     $code01 = trim((string) ($auth["code01"] ?? ""));
     if ($code01 === "") {
@@ -2005,6 +2139,69 @@ function doSubmitPrestasi(array $req, array $auth): array
     );
 
     $url = $fields["url"];
+
+    if ($editId !== null) {
+        assertOwnedCanceledReward($pdo, $editId, $custId, $nocust);
+        $sql = "
+            UPDATE aka_reward
+            SET nmcust = :nmcust,
+                kelas = :kelas,
+                nisn = :nisn,
+                jenis_prestasi = :jenis,
+                prestasi_kategori_id = :kategori,
+                prestasi_tingkat_id = :tingkat,
+                prestasi_poin_id = :poin,
+                keterangan = :keterangan,
+                penyelenggara = :penyelenggara,
+                no_sertifikat = :sertifikat,
+                nilai_penghargaan = :nilai,
+                bta = :bta,
+                semester = :semester,
+                url = :url,
+                isapproved = 'pending',
+                approveddate = NULL,
+                approvedby = NULL,
+                catatan_admin = NULL,
+                updated_at = NOW()
+            WHERE id = :id AND custid = :custid AND nocust = :nocust
+            LIMIT 1
+        ";
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindValue(":nmcust", $nmcust, PDO::PARAM_STR);
+            $stmt->bindValue(":kelas", $kelas, PDO::PARAM_STR);
+            $stmt->bindValue(":nisn", $fields["nisn"], PDO::PARAM_STR);
+            $stmt->bindValue(":jenis", $selection["jenis_prestasi"], PDO::PARAM_STR);
+            $stmt->bindValue(":kategori", $selection["prestasi_kategori_id"], PDO::PARAM_INT);
+            $stmt->bindValue(":tingkat", $selection["prestasi_tingkat_id"], PDO::PARAM_INT);
+            $stmt->bindValue(":poin", $selection["prestasi_poin_id"], PDO::PARAM_INT);
+            $stmt->bindValue(":keterangan", $fields["keterangan"], PDO::PARAM_STR);
+            $stmt->bindValue(":penyelenggara", $fields["penyelenggara"], PDO::PARAM_STR);
+            $stmt->bindValue(":sertifikat", $fields["no_sertifikat"], PDO::PARAM_STR);
+            $stmt->bindValue(":nilai", $selection["nilai_penghargaan"], PDO::PARAM_STR);
+            $stmt->bindValue(":bta", $fields["tahun_akademik"], PDO::PARAM_STR);
+            $stmt->bindValue(":semester", $fields["semester"], PDO::PARAM_INT);
+            $stmt->bindValue(":url", $url, PDO::PARAM_STR);
+            $stmt->bindValue(":id", $editId, PDO::PARAM_INT);
+            $stmt->bindValue(":custid", $custId, PDO::PARAM_STR);
+            $stmt->bindValue(":nocust", $nocust, PDO::PARAM_STR);
+            $stmt->execute();
+        } catch (PDOException $e) {
+            $sqlMsg = $e->getMessage();
+            writeLog("RESUBMIT_SQL_FAIL", ["sqlstate" => $e->getCode(), "message" => $sqlMsg]);
+            if (str_contains($sqlMsg, "Unknown column")) {
+                fail(500, "Kolom aka_reward belum lengkap. Jalankan query ALTER di Navicat.");
+            }
+            fail(500, "Gagal mengirim ulang prestasi.");
+        }
+        writeLog("RESUBMIT_SUCCESS", ["id" => $editId, "custid" => $custId, "nocust" => $nocust]);
+        return [
+            "id" => $editId,
+            "url" => $url,
+            "isapproved" => "pending",
+        ];
+    }
+
     $rewardId = allocateRewardId($pdo);
 
     $sql = "
@@ -2158,7 +2355,8 @@ function fetchSiswaByNocust(PDO $pdo, string $nocust, string $userCode01): ?arra
             TRIM(c.NMCUST) AS nmcust,
             TRIM(c.DESC02) AS kelas,
             TRIM(c.CODE01) AS code01,
-            TRIM(ms.DESC01) AS sekolah
+            TRIM(ms.DESC01) AS sekolah,
+            TRIM(c.musrifah) AS musrifah
         FROM scctcust c
         LEFT JOIN mst_sekolah ms ON ms.CODE01 = c.CODE01
         WHERE TRIM(c.NOCUST) = :nocust
@@ -2172,6 +2370,35 @@ function fetchSiswaByNocust(PDO $pdo, string $nocust, string $userCode01): ?arra
     $stmt->execute();
     $row = $stmt->fetch();
     return $row ?: null;
+}
+
+function doGetMusrifah(array $auth): array
+{
+    assertApprovalRole($auth);
+    $pdo = dbConnectPdo();
+    $userCode01 = staffUnitCode01($auth);
+    $sql = "
+        SELECT DISTINCT TRIM(c.musrifah) AS musrifah
+        FROM scctcust c
+        WHERE c.musrifah IS NOT NULL
+          AND TRIM(c.musrifah) <> ''
+          AND UPPER(TRIM(c.musrifah)) <> 'SYSTEM'
+          AND (:code01_empty = '' OR c.CODE01 = :code01_value)
+        ORDER BY musrifah ASC
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(":code01_empty", $userCode01, PDO::PARAM_STR);
+    $stmt->bindValue(":code01_value", $userCode01, PDO::PARAM_STR);
+    $stmt->execute();
+    $items = [];
+    foreach ($stmt->fetchAll() ?: [] as $row) {
+        $m = trim((string) ($row["musrifah"] ?? ""));
+        if ($m !== "" && !in_array($m, $items, true)) {
+            $items[] = $m;
+        }
+    }
+
+    return ["items" => $items];
 }
 
 function mapCatatanKepribadianRow(array $row): array
@@ -2214,7 +2441,8 @@ function doSearchSiswa(array $req, array $auth): array
             TRIM(c.NMCUST) AS nmcust,
             TRIM(c.DESC02) AS kelas,
             TRIM(c.CODE01) AS code01,
-            TRIM(ms.DESC01) AS sekolah
+            TRIM(ms.DESC01) AS sekolah,
+            TRIM(c.musrifah) AS musrifah
         FROM scctcust c
         LEFT JOIN mst_sekolah ms ON ms.CODE01 = c.CODE01
         WHERE (c.NOCUST LIKE :q1 OR c.NMCUST LIKE :q2)
@@ -2245,6 +2473,7 @@ function doSearchSiswa(array $req, array $auth): array
             "kelas" => trim((string) ($row["kelas"] ?? "")),
             "code01" => trim((string) ($row["code01"] ?? "")),
             "sekolah" => trim((string) ($row["sekolah"] ?? "")),
+            "musrifah" => trim((string) ($row["musrifah"] ?? "")),
         ];
     }
 
@@ -4121,8 +4350,16 @@ try {
         fail(401, "Token JWT tidak valid");
     }
 
+    if ($method === "getPrestasiSaya") {
+        writeLog("METHOD_GET_PRESTASI_SAYA");
+        $data = doGetPrestasiSaya($decoded);
+        http_response_code(200);
+        echo json_encode(["status" => 200, "data" => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
     if ($method === "submitPrestasi") {
-        writeLog("METHOD_SUBMIT", ["has_file" => isset($_FILES["file"])]);
+        writeLog("METHOD_SUBMIT", ["has_file" => isset($_FILES["file"]), "id" => (string) ($req["id"] ?? "")]);
         $data = doSubmitPrestasi($req, $decoded);
         http_response_code(200);
         echo json_encode(["status" => 200, "data" => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
@@ -4159,6 +4396,14 @@ try {
     if ($method === "searchSiswa") {
         writeLog("METHOD_SEARCH_SISWA", ["q" => (string) ($req["q"] ?? "")]);
         $data = doSearchSiswa($req, $decoded);
+        http_response_code(200);
+        echo json_encode(["status" => 200, "data" => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        exit;
+    }
+
+    if ($method === "getMusrifah") {
+        writeLog("METHOD_GET_MUSRIFAH");
+        $data = doGetMusrifah($decoded);
         http_response_code(200);
         echo json_encode(["status" => 200, "data" => $data], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         exit;
