@@ -127,6 +127,8 @@ Route::middleware(['check.auth'])->group(function () {
     Route::get('/rekap-sholat/export-excel', [PresensiSholatController::class, 'exportRekapSholatExcel'])->name('presensi.rekap-sholat.export-excel');
     Route::get('/rekap-sholat/export-pdf', [PresensiSholatController::class, 'exportRekapSholatPdf'])->name('presensi.rekap-sholat.export-pdf');
 
+    Route::get('/data-anak-musrifah', [PresensiSholatController::class, 'showDataAnakMusrifah'])->name('presensi.data-anak-musrifah');
+
     Route::get('/presensi/account/ganti-password', [AuthController::class, 'showGantiPasswordPresensi'])->name('presensi.account.ganti-password');
     Route::post('/presensi/account/ganti-password', [AuthController::class, 'gantiPassword'])->name('presensi.account.ganti-password.post');
 });
