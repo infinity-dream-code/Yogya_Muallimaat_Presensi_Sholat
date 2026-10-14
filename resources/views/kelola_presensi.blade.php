@@ -488,6 +488,7 @@
             <li><a href="{{ route('presensi.log-presensi') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-square-check"></i></span>Log Presensi</a></li>
             <li><a href="{{ route('presensi.kelola') }}" class="sb-link active"><span class="sb-ico"><i class="fas fa-arrows-rotate"></i></span>Kelola Presensi</a></li>
             <li><a href="{{ route('presensi.rekap-sholat') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-chart-simple"></i></span>Rekap Sholat</a></li>
+            <li><a href="{{ route('presensi.data-anak-musrifah') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-users"></i></span>Data Anak Musrifah</a></li>
             <li><a href="{{ route('presensi.account.ganti-password') }}" class="sb-link"><span class="sb-ico"><i class="fas fa-gear"></i></span>Account Controls</a></li>
             <li>
                 <form method="POST" action="{{ route('logout') }}">

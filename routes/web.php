@@ -5,6 +5,7 @@ use App\Http\Controllers\ApprovalPrestasiController;
 use App\Http\Controllers\ApprovalAdminController;
 use App\Http\Controllers\ApprovalKatalogController;
 use App\Http\Controllers\CatatanKepribadianController;
+use App\Http\Controllers\KelolaMusyrifahController;
 use App\Http\Controllers\TahfidController;
 use App\Http\Controllers\PresensiSholatController;
 use Illuminate\Support\Facades\Route;
@@ -54,6 +55,7 @@ Route::middleware(['check.auth'])->group(function () {
             'tahfid' => $role === 'siswa'
                 ? redirect()->route('tahfid.siswa.index')
                 : redirect()->route('tahfid.jadwal.index'),
+            'kelola-musyrifah' => redirect()->route('kelola-musyrifah.musyrifah'),
             default => redirect()->route('dashboard.presensi-sholat'),
         };
     })->name('admin.index');
@@ -134,6 +136,17 @@ Route::middleware(['check.auth'])->group(function () {
     Route::get('/rekap-sholat/data', [PresensiSholatController::class, 'rekapSholatData'])->name('presensi.rekap-sholat.data');
     Route::get('/rekap-sholat/export-excel', [PresensiSholatController::class, 'exportRekapSholatExcel'])->name('presensi.rekap-sholat.export-excel');
     Route::get('/rekap-sholat/export-pdf', [PresensiSholatController::class, 'exportRekapSholatPdf'])->name('presensi.rekap-sholat.export-pdf');
+
+    Route::get('/data-anak-musrifah', [PresensiSholatController::class, 'showDataAnakMusrifah'])->name('presensi.data-anak-musrifah');
+
+    Route::prefix('kelola-musyrifah')->name('kelola-musyrifah.')->controller(KelolaMusyrifahController::class)->group(function () {
+        Route::get('/', 'musyrifah')->name('musyrifah');
+        Route::get('/siswa', 'siswa')->name('siswa');
+        Route::post('/siswa/update', 'updateSiswa')->name('siswa.update');
+        Route::get('/upload', 'upload')->name('upload');
+        Route::post('/upload', 'import')->name('upload.import');
+        Route::get('/upload/template', 'template')->name('upload.template');
+    });
 
     Route::get('/presensi/account/ganti-password', [AuthController::class, 'showGantiPasswordPresensi'])->name('presensi.account.ganti-password');
     Route::post('/presensi/account/ganti-password', [AuthController::class, 'gantiPassword'])->name('presensi.account.ganti-password.post');

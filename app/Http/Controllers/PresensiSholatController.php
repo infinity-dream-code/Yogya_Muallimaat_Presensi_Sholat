@@ -603,6 +603,50 @@ class PresensiSholatController extends Controller
         ]);
     }
 
+    public function showDataAnakMusrifah(Request $request)
+    {
+        if (session('user.app') !== 'presensi-sholat') {
+            return redirect()->route('dashboard');
+        }
+
+        $username = session('user.username');
+        if (! $username) {
+            \App\Support\PersistentLogin::restoreIntoSession(request());
+            $username = session('user.username');
+        }
+        if (! $username) {
+            return redirect()->route('admin.index');
+        }
+
+        $entries = [];
+        $error = null;
+
+        try {
+            $entries = DB::table('scctcust as sc')
+                ->leftJoin('mst_sekolah as ms', 'ms.CODE01', '=', 'sc.CODE01')
+                ->whereRaw('LOWER(TRIM(sc.musrifah)) = ?', [mb_strtolower(trim((string) $username))])
+                ->whereRaw('TRIM(sc.STCUST) = ?', ['1'])
+                ->orderBy('sc.NMCUST')
+                ->selectRaw("
+                    sc.CUSTID as custid,
+                    TRIM(sc.NOCUST) as nocust,
+                    TRIM(sc.NMCUST) as nama,
+                    COALESCE(NULLIF(TRIM(sc.CODE02), ''), TRIM(ms.DESC01), TRIM(sc.CODE01)) as unit,
+                    TRIM(sc.DESC02) as kelas,
+                    TRIM(sc.DESC03) as kelompok
+                ")
+                ->get();
+        } catch (\Throwable $e) {
+            Log::error('DataAnakMusrifah error', ['username' => $username, 'message' => $e->getMessage()]);
+            $error = 'Tidak dapat memuat data siswa. Silakan coba lagi.';
+        }
+
+        return view('data_anak_musrifah', [
+            'entries' => $entries,
+            'error' => $error,
+        ]);
+    }
+
     public function showRekapSholat(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {

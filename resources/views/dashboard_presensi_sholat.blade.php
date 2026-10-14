@@ -290,6 +290,12 @@
                 </a>
             </li>
             <li class="drawer-item">
+                <a href="{{ route('presensi.data-anak-musrifah') }}" class="drawer-link">
+                    <span class="icon"><i class="fas fa-users"></i></span>
+                    <span>Data Anak Musrifah</span>
+                </a>
+            </li>
+            <li class="drawer-item">
                 <a href="{{ route('presensi.account.ganti-password') }}" class="drawer-link">
                     <span class="icon"><i class="fas fa-gear"></i></span>
                     <span>Account Controls</span>

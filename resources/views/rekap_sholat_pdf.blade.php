@@ -132,7 +132,8 @@
             $title = $entry['NamaCust'] ?? $entry['NAMA'] ?? $entry['NAMASISWA'] ?? $entry['Nama'] ?? '-';
             $unitVal = $entry['UNIT'] ?? $entry['Unit'] ?? $entry['unit'] ?? '';
             $nisVal = $entry['NOCUST'] ?? $entry['nocust'] ?? $entry['NIS'] ?? $entry['NOKARTU'] ?? $entry['nis'] ?? '';
-            $totalHari = $entry['TOTAL_HARI'] ?? $entry['TOT_HARI'] ?? $entry['TOTALHARI'] ?? '';
+            $entryUpper = array_change_key_case($entry, CASE_UPPER);
+            $totalHari = $entryUpper['TOTAL_HARI'] ?? $entryUpper['TOT_HARI'] ?? $entryUpper['TOTALHARI'] ?? '';
             $totalHari = $totalHari !== null && $totalHari !== '' ? $totalHari : 0;
         @endphp
         <tr>
@@ -143,7 +144,7 @@
             <td>{{ $totalHari }}</td>
             @foreach($badgeKeys as $key => $labelShort)
                 @php
-                    $val = $entry[$key] ?? $entry[str_replace('_', ' ', $key)] ?? 0;
+                    $val = $entryUpper['TOTAL_' . $key] ?? $entryUpper[$key] ?? $entryUpper[str_replace('_', ' ', $key)] ?? 0;
                     $val = $val !== null && $val !== '' ? $val : 0;
                 @endphp
                 <td>{{ $val }}</td>
@@ -155,7 +156,7 @@
                         $k2 = $prefix . $key;
                         $num = array_search($prefix, array_values($sholatNames), true);
                         $k3 = $num !== false ? 'SHOLAT_' . ($num + 1) . '_' . $key : null;
-                        $val = $entry[$k1] ?? $entry[$k2] ?? ($k3 ? ($entry[$k3] ?? 0) : 0);
+                        $val = $entryUpper[$k1] ?? $entryUpper[$k2] ?? ($k3 ? ($entryUpper[$k3] ?? 0) : 0);
                         $val = $val !== null && $val !== '' ? $val : 0;
                     @endphp
                     <td>{{ $val }}</td>
