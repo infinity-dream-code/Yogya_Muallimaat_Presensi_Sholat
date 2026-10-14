@@ -19,7 +19,7 @@ class PresensiSholatController extends Controller
     public function showQr()
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         return view('presensi_sholat_qr');
@@ -28,7 +28,7 @@ class PresensiSholatController extends Controller
     public function showHaidQr()
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         return view('presensi_haid_qr');
@@ -261,7 +261,7 @@ class PresensiSholatController extends Controller
     public function showLogMarifah(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -343,7 +343,7 @@ class PresensiSholatController extends Controller
     public function showLogPresensi(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -419,7 +419,7 @@ class PresensiSholatController extends Controller
     public function showKelolaPresensi(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -606,7 +606,7 @@ class PresensiSholatController extends Controller
     public function showDataAnakMusrifah(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -650,7 +650,7 @@ class PresensiSholatController extends Controller
     public function showRekapSholat(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -721,7 +721,7 @@ class PresensiSholatController extends Controller
     public function exportRekapSholatExcel(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -755,7 +755,7 @@ class PresensiSholatController extends Controller
     public function exportRekapSholatPdf(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -868,7 +868,7 @@ class PresensiSholatController extends Controller
     public function exportLogPresensiExcel(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');
@@ -937,7 +937,7 @@ class PresensiSholatController extends Controller
     public function exportLogPresensiPdf(Request $request)
     {
         if (session('user.app') !== 'presensi-sholat') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $username = session('user.username');

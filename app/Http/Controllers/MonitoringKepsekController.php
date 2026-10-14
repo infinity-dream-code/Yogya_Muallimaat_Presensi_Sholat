@@ -17,7 +17,7 @@ class MonitoringKepsekController extends Controller
     public function showTagihan()
     {
         if (session('user.app') !== 'monitoring-kepsek') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         return view('tagihan_kepsek');
@@ -196,7 +196,7 @@ class MonitoringKepsekController extends Controller
     public function exportTagihanExcel(Request $request)
     {
         if (session('user.app') !== 'monitoring-kepsek') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $rows = $this->fetchTagihanForExport($request);
@@ -219,7 +219,7 @@ class MonitoringKepsekController extends Controller
     public function exportTagihanPdf(Request $request)
     {
         if (session('user.app') !== 'monitoring-kepsek') {
-            return redirect()->route('dashboard');
+            return redirect()->route('admin.index');
         }
 
         $rows = $this->fetchTagihanForExport($request);

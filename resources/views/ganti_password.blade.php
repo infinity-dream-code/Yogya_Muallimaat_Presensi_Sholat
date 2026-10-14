@@ -431,7 +431,7 @@
                     text: @json(session('password_success')),
                     confirmButtonColor: '#a855f7'
                 }).then(function () {
-                    window.location.href = @json(session('user.app') === 'presensi-sholat' ? route('dashboard.presensi-sholat') : route('dashboard'));
+                    window.location.href = @json(session('user.app') === 'presensi-sholat' ? route('dashboard.presensi-sholat') : route('admin.index'));
                 });
             });
         </script>
