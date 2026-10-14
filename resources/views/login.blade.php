@@ -255,6 +255,9 @@
                             <option value="tahfid" {{ old('app') === 'tahfid' ? 'selected' : '' }}>
                                 Aplikasi Tahfid
                             </option>
+                            <option value="kelola-musyrifah" {{ old('app') === 'kelola-musyrifah' ? 'selected' : '' }}>
+                                Aplikasi Kelola Musyrifah
+                            </option>
                         </select>
                     </div>
                 </div>

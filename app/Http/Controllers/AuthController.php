@@ -6,6 +6,7 @@ use App\Models\CyberKey;
 use App\Services\LaporanSsoService;
 use App\Support\PersistentLogin;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -40,7 +41,7 @@ class AuthController extends Controller
             !empty(config('services.cloudflare_turnstile.secret_key'));
 
         $validated = $request->validate([
-            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan,approval-prestasi,catatan-kepribadian,tahfid'],
+            'app' => ['required', 'in:presensi-sholat,aplikasi-laporan,approval-prestasi,catatan-kepribadian,tahfid,kelola-musyrifah'],
             'username' => ['required', 'string'],
             'password' => ['required', 'string'],
             'cf-turnstile-response' => [$turnstileEnabled ? 'required' : 'nullable', 'string'],
@@ -69,8 +70,56 @@ class AuthController extends Controller
         if ($validated['app'] === 'tahfid') {
             return $this->loginTahfid($request, $validated);
         }
+        if ($validated['app'] === 'kelola-musyrifah') {
+            return $this->loginKelolaMusyrifah($request, $validated);
+        }
 
         return $this->loginPresensiSholat($request, $validated);
+    }
+
+    private function loginKelolaMusyrifah(Request $request, array $validated)
+    {
+        $username = trim($validated['username']);
+        $password = (string) $validated['password'];
+        $fail = fn (string $message) => back()
+            ->withInput(['app' => 'kelola-musyrifah', 'username' => $username])
+            ->with('login_error', $message);
+
+        try {
+            $user = DB::table('sholat_user')
+                ->whereRaw('LOWER(TRIM(username)) = ?', [mb_strtolower($username)])
+                ->first();
+        } catch (\Throwable $e) {
+            Log::error('Kelola Musyrifah login failed', ['message' => $e->getMessage()]);
+            return $fail('Tidak dapat terhubung ke database. Silakan coba lagi.');
+        }
+
+        $stored = trim((string) ($user->password ?? ''));
+        $passwordOk = $stored !== '' && (
+            hash_equals(strtolower($stored), md5($password))
+            || hash_equals($stored, $password)
+            || (str_starts_with($stored, '$2y$') && password_verify($password, $stored))
+        );
+
+        if (! $user || ! $passwordOk) {
+            return $fail('Username atau password salah.');
+        }
+
+        $role = strtolower(trim((string) ($user->role ?? '')));
+        if (! in_array($role, ['admin', 'superadmin', 'super admin'], true)) {
+            return $fail('Aplikasi ini hanya untuk super admin.');
+        }
+
+        $request->session()->put('user', [
+            'userid' => (string) ($user->idincrement ?? ''),
+            'username' => trim((string) $user->username),
+            'nama' => trim((string) ($user->nama ?? $user->username)),
+            'role' => trim((string) ($user->role ?? '')),
+            'app' => 'kelola-musyrifah',
+        ]);
+        PersistentLogin::set(session('user'));
+
+        return redirect()->route('kelola-musyrifah.musyrifah');
     }
 
     private function loginStaffWs(Request $request, array $validated, string $app, string $homeRoute, string $appLabel)
