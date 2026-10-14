@@ -5,7 +5,7 @@ Dokumentasi folder `ws/` berdasarkan kode yang ditarik dari server.
 - **Endpoint produksi:** `http://103.23.103.43/ws_client/mualimat_reward/index.php`
 - **Entry point:** `ws/index.php`
 - **Database:** MySQL `yogya_muallimaat` (lihat `ws/.env`, jangan commit secret)
-- **Terakhir diselaraskan:** 27 Agustus 2026
+- **Terakhir diselaraskan:** 14 Oktober 2026
 
 Setiap kali folder `ws/` di-update dari server, **file ini wajib diperbarui** (method, tabel, kolom, validasi, env).
 
@@ -28,7 +28,7 @@ API PHP JSON (POST). Semua aksi memakai field `method`. Laravel di project ini b
 | `manageKatalog` | JWT superadmin | CRUD kategori, tingkat, dan poin |
 | `searchSiswa` | JWT staf | Cari siswi (`scctcust`) untuk catatan kepribadian |
 | `manageCatatanKepribadian` | JWT staf | CRUD catatan kepribadian siswi |
-| `manageTahfid` | JWT siswa/staf | Jadwal, setoran, dan progres tahfid |
+| `manageTahfid` | JWT siswa/staf | Jadwal, setoran, progres, dan laporan rekap setoran tahfid |
 
 ---
 
@@ -478,7 +478,15 @@ Butuh JWT staf. `action`: `list`, `get`, `create`, `update`, `delete`.
 
 ### `manageTahfid`
 
-Butuh JWT. Siswa: `action` `myjadwal`, `submitsetoran`. Staf: `list` / `listjadwal`, `listkelas`, `get`, `save` / `create` / `update`, `delete`, `listpercepatan`, `savepercepatan`, `deletepercepatan`, `siswaprogress` / `getprogress`, `saveprogress`. Tabel dibuat otomatis jika belum ada (`aka_tahfid_jadwal`, detail, setoran, progres).
+Butuh JWT. Siswa: `action` `myjadwal`, `submitsetoran`. Staf: `list` / `listjadwal`, `listkelas`, `get`, `save` / `create` / `update`, `delete`, `listpercepatan`, `savepercepatan`, `deletepercepatan`, `siswaprogress` / `getprogress`, `saveprogress`, `laporan` / `rekapsetoran`, `templateprogress` / `exportprogress`, `importprogress`. Tabel dibuat otomatis jika belum ada (`aka_tahfid_jadwal`, detail, setoran, progres).
+
+**laporan / rekapsetoran** (staf): rekap snapshot progress seluruh siswi di unit. Filter `code01` (superadmin; Musrifah memakai unitnya), `kelas`, `q` (NIS/nama). Tanpa unit: `need_unit=true`, `items` kosong.
+
+`data.items` per siswi: `custid`, `nocust`, `nmcust`, `kelas`, `target`, `lunas`, `proses`, `belum`, `persen`, `badge` (`belum` / `proses` / `lunas`), `percepatan`, `details`. Tiap detail: surat, status, `ayat_dari` / `ayat_sampai` / `ayat_label`, `catatan`, `setor_at`. Target = jadwal kelas + percepatan. Status surat dari `aka_tahfid_progress`, fallback `aka_tahfid_setoran` = lunas. Halaman laporan hanya menampilkan siswi yang punya jadwal (`target > 0`). Plus `ringkasan` (`jumlah_siswi`, `lunas_penuh`, `masih_proses`, `belum_mulai`), `sekolah`, `kelas`.
+
+**templateprogress / exportprogress** (staf): unduh baris template setoran. `nis` = satu siswi, atau `code01` + `kelas` = seluruh siswi kelas. `data.rows`: `nis`, `nama`, `kelas`, `jadwal_detail_id`, surat, `asal`, `status_saat_ini`.
+
+**importprogress** (staf): `rows[]` maks. 500. Per baris: `nis`, `jadwal_detail_id`, `status` (`proses`/`lunas`, kosong = lewati), `ayat_dari`, `ayat_sampai`, `catatan`. Memakai `tahfidUpsertProgress`. `data`: `ok`, `skip`, `fail`, `errors`, `message`.
 
 ---
 
@@ -501,6 +509,7 @@ Butuh JWT. Siswa: `action` `myjadwal`, `submitsetoran`. Staf: `list` / `listjadw
 - Frontend siswa memakai `login`, `getTahunAkademik`, `getPrestasiKatalog`, `getPrestasiSaya`, `submitPrestasi`.
 - `loginApproval`, `approval`, `manageUsers`, `manageKatalog` dipakai aplikasi Approval Prestasi (Laravel).
 - `loginApproval`, `searchSiswa`, `manageCatatanKepribadian` dipakai aplikasi Catatan Kepribadian Siswi (Laravel).
+- `loginApproval`, `searchSiswa`, `manageTahfid` dipakai aplikasi Tahfid (Laravel), termasuk `action` `laporan` di halaman Laporan Setoran.
 - Proxy siswa: `POST /api/reward` → `WS_URL` untuk login, tahun akademik, katalog, dan submit baru. `getPrestasiSaya` dan kirim ulang (`submitPrestasi` + `id`) dijalankan dari `ws/index.php` lokal sampai method itu di-upload ke server.
 - Tahun akademik di-cache Laravel (default 6 jam). Katalog prestasi cache singkat (60 detik, key `ws.prestasi_katalog.v3`).
 

@@ -340,6 +340,11 @@
                     <i class="fas fa-clipboard-list"></i> Progress siswi
                 </a>
             </li>
+            <li>
+                <a href="{{ route('tahfid.laporan.index') }}" class="sb-link {{ $navActive === 'laporan' ? 'active' : '' }}">
+                    <i class="fas fa-chart-simple"></i> Laporan
+                </a>
+            </li>
             @if($isSuperadmin)
             <li>
                 <a href="{{ route('tahfid.admin.index') }}" class="sb-link {{ $navActive === 'admin' ? 'active' : '' }}">

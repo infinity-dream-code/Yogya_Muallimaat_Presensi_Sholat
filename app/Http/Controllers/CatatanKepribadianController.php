@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\CatatanKepribadianExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 
 class CatatanKepribadianController extends Controller
 {
@@ -203,6 +205,39 @@ class CatatanKepribadianController extends Controller
         $message = (string) (($payload['data']['message'] ?? null) ?: 'Catatan tersimpan.');
 
         return redirect()->route('catatan.kepribadian.index')->with('success', $message);
+    }
+
+    public function export(Request $request)
+    {
+        $guard = $this->guardApp();
+        if ($guard !== null) {
+            return $guard;
+        }
+
+        $q = trim((string) $request->query('q', ''));
+        $bta = trim((string) $request->query('bta', ''));
+        $semester = trim((string) $request->query('semester', ''));
+        if (! in_array($semester, ['', '1', '2'], true)) {
+            $semester = '';
+        }
+
+        [$items, , $error] = $this->fetchList($q, $bta, $semester);
+        $query = array_filter(['q' => $q, 'bta' => $bta, 'semester' => $semester]);
+        if ($error !== null) {
+            return redirect()->route('catatan.kepribadian.index', $query)->with('error', $error);
+        }
+        if (count($items) === 0) {
+            return redirect()->route('catatan.kepribadian.index', $query)->with('error', 'Tidak ada data untuk diunduh.');
+        }
+
+        $semesterLabel = $semester === '1' ? 'Ganjil' : ($semester === '2' ? 'Genap' : 'Semua');
+        $filename = 'catatan_kepribadian_'.now()->format('Ymd_His').'.xlsx';
+
+        return Excel::download(new CatatanKepribadianExport($items, [
+            'bta' => $bta,
+            'semester_label' => $semesterLabel,
+            'q' => $q,
+        ]), $filename);
     }
 
     private function fetchList(string $q, string $bta, string $semester): array

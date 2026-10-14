@@ -33,7 +33,14 @@
         </div>
         <div class="table-toolbar">
             <span class="count-pill">{{ count($items) }} catatan</span>
-            <a href="{{ route('catatan.kepribadian.create') }}" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah catatan</a>
+            <div class="actions">
+                @if(count($items) > 0)
+                    <a href="{{ route('catatan.kepribadian.export', array_filter(['q' => $q, 'bta' => $bta, 'semester' => $semester])) }}" class="btn btn-ghost btn-sm">
+                        <i class="fas fa-file-excel"></i> Unduh Excel
+                    </a>
+                @endif
+                <a href="{{ route('catatan.kepribadian.create') }}" class="btn btn-primary"><i class="fas fa-plus"></i> Tambah catatan</a>
+            </div>
         </div>
         <div class="table-wrap">
             @if(count($items) === 0)

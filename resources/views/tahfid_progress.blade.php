@@ -64,6 +64,161 @@
             </div>
         </div>
 
+        <div class="filters" style="border-top:1px solid var(--border)">
+            <form method="GET" action="{{ route('tahfid.progress.template') }}" class="filters-grid" style="grid-template-columns: {{ !empty($isSuperadmin) ? '1.1fr ' : '' }}1fr auto auto;">
+                @if(!empty($isSuperadmin))
+                <div class="field">
+                    <label for="tplUnit">Unit template kelas</label>
+                    <select id="tplUnit" name="code01">
+                        <option value="">Pilih unit</option>
+                        @foreach(($sekolah ?? []) as $sch)
+                            <option value="{{ $sch['code01'] }}" {{ ($code01 ?? '') === ($sch['code01'] ?? '') ? 'selected' : '' }}>{{ $sch['sekolah'] }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
+                <div class="field">
+                    <label for="tplKelas">Kelas</label>
+                    <select id="tplKelas" name="kelas" required>
+                        <option value="">Pilih kelas</option>
+                        @foreach(($kelasOptions ?? []) as $opt)
+                            <option value="{{ $opt }}" {{ ($kelasTemplate ?? '') === $opt ? 'selected' : '' }}>{{ $opt }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-ghost">Unduh template kelas</button>
+                @if(!empty($siswa['nocust']))
+                    <a href="{{ route('tahfid.progress.template', ['nis' => $siswa['nocust']]) }}" class="btn btn-ghost">Unduh template siswi ini</a>
+                @endif
+            </form>
+            <form method="POST" action="{{ route('tahfid.progress.import') }}" enctype="multipart/form-data" class="filters-grid" style="grid-template-columns: 1.6fr auto; margin-top:8px">
+                @csrf
+                @if(!empty($nis))
+                    <input type="hidden" name="nis" value="{{ $nis }}">
+                @endif
+                <div class="field">
+                    <label for="importFile">Unggah Excel setoran</label>
+                    <input id="importFile" type="file" name="file" accept=".xlsx,.xls" required>
+                </div>
+                <button type="submit" class="btn btn-ghost">Pratinjau</button>
+            </form>
+        </div>
+
+        @if(!empty($importPreview) && is_array($importPreview))
+            @php
+                $previewUpdates = is_array($importPreview['updates'] ?? null) ? $importPreview['updates'] : [];
+                $previewInvalid = is_array($importPreview['invalid'] ?? null) ? $importPreview['invalid'] : [];
+                $previewSkipped = (int) ($importPreview['skipped'] ?? 0);
+            @endphp
+            <div class="filters" style="border-top:1px solid var(--border)">
+                <div class="table-toolbar" style="padding:0 0 10px">
+                    <div>
+                        <div class="cell-main">Pratinjau unggah Excel</div>
+                        <div class="cell-sub">{{ $importPreview['filename'] ?? 'File Excel' }} · baris Status baru kosong dilewati, belum disimpan</div>
+                    </div>
+                    <span class="count-pill">{{ count($previewUpdates) }} akan diubah · {{ $previewSkipped }} dilewati · {{ count($previewInvalid) }} tidak valid</span>
+                </div>
+
+                @if(count($previewUpdates) > 0)
+                    <div class="table-wrap" style="max-height:360px;margin-bottom:10px">
+                        <table class="data">
+                            <thead>
+                                <tr>
+                                    <th>NIS</th>
+                                    <th>Nama</th>
+                                    <th>Surat</th>
+                                    <th>Status saat ini</th>
+                                    <th>Status baru</th>
+                                    <th>Ayat</th>
+                                    <th>Catatan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($previewUpdates as $row)
+                                    <tr>
+                                        <td class="mono">{{ $row['nis'] ?? '-' }}</td>
+                                        <td>
+                                            <div class="cell-main">{{ ($row['nama'] ?? '') !== '' ? $row['nama'] : '-' }}</div>
+                                            @if(($row['kelas'] ?? '') !== '')
+                                                <div class="cell-sub">Kelas {{ $row['kelas'] }}</div>
+                                            @endif
+                                        </td>
+                                        <td>{{ $row['surat'] ?? '-' }}</td>
+                                        <td>{{ ($row['status_saat_ini'] ?? '') !== '' ? $row['status_saat_ini'] : '-' }}</td>
+                                        <td>
+                                            @if(($row['status'] ?? '') === 'lunas' || ($row['status'] ?? '') === 'selesai' || ($row['status'] ?? '') === 'lengkap')
+                                                <span class="badge approved">lunas</span>
+                                            @else
+                                                <span class="badge pending">{{ $row['status'] ?? 'proses' }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="mono">
+                                            @if((int) ($row['ayat_dari'] ?? 0) > 0)
+                                                {{ (int) $row['ayat_dari'] }}–{{ (int) ($row['ayat_sampai'] ?? 0) }}
+                                            @else
+                                                —
+                                            @endif
+                                        </td>
+                                        <td>{{ ($row['catatan'] ?? '') !== '' ? $row['catatan'] : '—' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @else
+                    <p class="cell-sub" style="margin:0 0 10px">Tidak ada baris yang akan diubah. Isi kolom Status baru dengan proses atau lunas.</p>
+                @endif
+
+                @if(count($previewInvalid) > 0)
+                    <p class="cell-sub" style="margin:0 0 6px">Baris berikut tidak valid dan akan gagal jika diproses:</p>
+                    <div class="table-wrap" style="max-height:200px;margin-bottom:10px">
+                        <table class="data">
+                            <thead>
+                                <tr>
+                                    <th>NIS</th>
+                                    <th>Nama</th>
+                                    <th>Surat</th>
+                                    <th>Status baru</th>
+                                    <th>Alasan</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach($previewInvalid as $row)
+                                    <tr>
+                                        <td class="mono">{{ $row['nis'] ?? '-' }}</td>
+                                        <td>{{ ($row['nama'] ?? '') !== '' ? $row['nama'] : '-' }}</td>
+                                        <td>{{ $row['surat'] ?? '-' }}</td>
+                                        <td>{{ $row['status'] ?? '-' }}</td>
+                                        <td>{{ $row['alasan'] ?? '-' }}</td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+
+                <div class="actions">
+                    <form method="POST" action="{{ route('tahfid.progress.import.cancel') }}">
+                        @csrf
+                        @if(!empty($importPreview['nis']))
+                            <input type="hidden" name="nis" value="{{ $importPreview['nis'] }}">
+                        @endif
+                        <button type="submit" class="btn btn-ghost">Batal</button>
+                    </form>
+                    @if(count($previewUpdates) > 0)
+                        <form method="POST" action="{{ route('tahfid.progress.import.confirm') }}">
+                            @csrf
+                            <input type="hidden" name="token" value="{{ $importPreview['token'] ?? '' }}">
+                            @if(!empty($importPreview['nis']))
+                                <input type="hidden" name="nis" value="{{ $importPreview['nis'] }}">
+                            @endif
+                            <button type="submit" class="btn btn-ok">Proses {{ count($previewUpdates) }} perubahan</button>
+                        </form>
+                    @endif
+                </div>
+            </div>
+        @endif
+
         @if($siswa)
             <div class="table-toolbar">
                 <div class="cell-user">
@@ -227,6 +382,31 @@
 (function () {
     var searchUrl = @json(route('tahfid.siswa.search'));
     var progressUrl = @json(route('tahfid.progress.index'));
+    var kelasUrl = @json(route('tahfid.kelas'));
+    var tplUnit = document.getElementById('tplUnit');
+    var tplKelas = document.getElementById('tplKelas');
+    function fillKelas(code01, selected) {
+        if (!tplKelas) return;
+        tplKelas.innerHTML = '<option value="">Pilih kelas</option>';
+        if (!code01) return;
+        fetch(kelasUrl + '?code01=' + encodeURIComponent(code01), { headers: { 'Accept': 'application/json' } })
+            .then(function (res) { return res.json(); })
+            .then(function (json) {
+                var rows = (json && json.data) ? json.data : [];
+                rows.forEach(function (row) {
+                    var nama = (row && row.kelas) ? row.kelas : row;
+                    if (!nama) return;
+                    var opt = document.createElement('option');
+                    opt.value = nama;
+                    opt.textContent = nama;
+                    if (selected && selected === nama) opt.selected = true;
+                    tplKelas.appendChild(opt);
+                });
+            });
+    }
+    if (tplUnit) {
+        tplUnit.addEventListener('change', function () { fillKelas(tplUnit.value, ''); });
+    }
     var qEl = document.getElementById('siswaQ');
     var listEl = document.getElementById('siswaSuggest');
     var timer = null;

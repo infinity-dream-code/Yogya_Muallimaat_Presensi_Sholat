@@ -78,6 +78,11 @@
         <div class="table-toolbar">
             <span class="count-pill" id="resultCount">{{ count($items) }} data</span>
             <span class="count-pill" id="sortHint">Terbaru dulu</span>
+            @if(count($items) > 0)
+                <a href="{{ route('approval.prestasi.export', array_filter(['status' => $status, 'q' => $q, 'tanggal_dari' => $tanggalDari, 'tanggal_sampai' => $tanggalSampai])) }}" class="btn btn-ghost btn-sm" id="btnExportExcel" data-export-base="{{ route('approval.prestasi.export') }}" data-status="{{ $status }}">
+                    <i class="fas fa-file-excel"></i> Unduh Excel
+                </a>
+            @endif
         </div>
         <div class="table-wrap">
             @if(count($items) === 0)
@@ -147,11 +152,11 @@
                                 @endphp
                                 <div class="cell-user">
                                     <span class="avatar">{{ $initials }}</span>
-                                    <div>
+                    <div>
                                         <div class="cell-main">{{ $item['nmcust'] ?: '-' }}</div>
                                         <div class="cell-sub">{{ $item['nocust'] ?: '-' }} · {{ $item['kelas'] ?: '-' }}@if(!empty($item['nisn'])) · NISN {{ $item['nisn'] }}@endif</div>
-                                    </div>
-                                </div>
+                    </div>
+                    </div>
                             </td>
                             <td>{{ $sekolah !== '' ? $sekolah : '-' }}</td>
                             <td>
@@ -182,38 +187,38 @@
                             <td>
                                 @if($bukti !== '')
                                     <a class="link" href="{{ $bukti }}" target="_blank" rel="noopener noreferrer">{{ $isDrive ? 'Drive' : 'Lihat' }}</a>
-                                @else
-                                    -
-                                @endif
+                            @else
+                                -
+                            @endif
                             </td>
                             <td>
-                                <div class="actions">
+                <div class="actions">
                                     @if($itemStatus !== 'approve')
                                     <form method="POST" action="{{ route('approval.prestasi.action') }}" class="js-confirm" data-title="Setujui prestasi?" data-text="Data ini akan disetujui.">
-                                        @csrf
-                                        <input type="hidden" name="id" value="{{ $item['id'] }}">
-                                        <input type="hidden" name="action" value="approve">
-                                        <input type="hidden" name="status" value="{{ $status }}">
-                                        <input type="hidden" name="q" value="{{ $q }}">
+                        @csrf
+                        <input type="hidden" name="id" value="{{ $item['id'] }}">
+                        <input type="hidden" name="action" value="approve">
+                        <input type="hidden" name="status" value="{{ $status }}">
+                        <input type="hidden" name="q" value="{{ $q }}">
                                         <input type="hidden" name="tanggal_dari" value="{{ $tanggalDari }}">
                                         <input type="hidden" name="tanggal_sampai" value="{{ $tanggalSampai }}">
                                         <button type="submit" class="btn btn-ok btn-sm">Setujui</button>
-                                    </form>
+                    </form>
                                     @endif
                                     @if($itemStatus !== 'canceled')
                                     <form method="POST" action="{{ route('approval.prestasi.action') }}" class="js-confirm" data-title="Tolak prestasi?" data-text="Isi catatan penolakan. Catatan ini akan terlihat di data yang ditolak." data-note="required">
-                                        @csrf
-                                        <input type="hidden" name="id" value="{{ $item['id'] }}">
-                                        <input type="hidden" name="action" value="tolak">
-                                        <input type="hidden" name="status" value="{{ $status }}">
-                                        <input type="hidden" name="q" value="{{ $q }}">
+                        @csrf
+                        <input type="hidden" name="id" value="{{ $item['id'] }}">
+                        <input type="hidden" name="action" value="tolak">
+                        <input type="hidden" name="status" value="{{ $status }}">
+                        <input type="hidden" name="q" value="{{ $q }}">
                                         <input type="hidden" name="tanggal_dari" value="{{ $tanggalDari }}">
                                         <input type="hidden" name="tanggal_sampai" value="{{ $tanggalSampai }}">
                                         <input type="hidden" name="catatan_admin" class="js-catatan-admin" value="">
                                         <button type="submit" class="btn btn-danger btn-sm">Tolak</button>
-                                    </form>
+                    </form>
                                     @endif
-                                </div>
+                </div>
                             </td>
                         </tr>
                     @endforeach
@@ -221,7 +226,7 @@
             </table>
             <div class="empty" id="emptyFiltered" style="display:none;">Tidak ada data yang cocok dengan filter.</div>
         @endif
-        </div>
+            </div>
     </div>
 @endsection
 
@@ -242,6 +247,7 @@
     var hintEl = document.getElementById('sortHint');
     var emptyEl = document.getElementById('emptyFiltered');
     var table = document.getElementById('approvalTable');
+    var exportBtn = document.getElementById('btnExportExcel');
 
     function apply() {
         var q = (qEl && qEl.value || '').trim().toLowerCase();
@@ -312,6 +318,15 @@
         if (hintEl) hintEl.textContent = sortDir === 'asc' ? 'Terlama dulu' : 'Terbaru dulu';
         if (emptyEl) emptyEl.style.display = visible.length === 0 ? 'block' : 'none';
         if (table) table.style.display = visible.length === 0 ? 'none' : '';
+        if (exportBtn) {
+            var params = new URLSearchParams();
+            params.set('status', exportBtn.getAttribute('data-status') || 'all');
+            if (q) params.set('q', (qEl && qEl.value || '').trim());
+            if (dari) params.set('tanggal_dari', dari);
+            if (sampai) params.set('tanggal_sampai', sampai);
+            exportBtn.href = (exportBtn.getAttribute('data-export-base') || '') + '?' + params.toString();
+            exportBtn.style.display = visible.length === 0 ? 'none' : '';
+        }
     }
 
     body.addEventListener('click', function (e) {

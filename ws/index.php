@@ -3076,10 +3076,10 @@ function tahfidUpsertProgress(
     $detail->execute();
     $row = $detail->fetch();
     if (!is_array($row)) {
-        fail(404, "Item jadwal tidak ditemukan");
+        throw new InvalidArgumentException("Item jadwal tidak ditemukan");
     }
     if (!tahfidSiswaBolehAksesDetail($pdo, $siswa, $row)) {
-        fail(403, "Siswi ini tidak memiliki jadwal surat tersebut");
+        throw new InvalidArgumentException("Siswi ini tidak memiliki jadwal surat tersebut");
     }
     $targetDari = (int) ($row["ayat_dari"] ?? 1);
     $targetSampai = (int) ($row["ayat_sampai"] ?? $targetDari);
@@ -3091,7 +3091,7 @@ function tahfidUpsertProgress(
         $ayatSampai = $targetSampai;
     }
     if ($ayatDari < $targetDari || $ayatSampai > $targetSampai || $ayatSampai < $ayatDari) {
-        fail(422, "Rentang ayat harus di dalam target jadwal (ayat " . $targetDari . "–" . $targetSampai . ")");
+        throw new InvalidArgumentException("Rentang ayat harus di dalam target jadwal (ayat " . $targetDari . "–" . $targetSampai . ")");
     }
     $catatan = mb_substr(trim($catatan), 0, 500);
     $custid = trim((string) $siswa["custid"]);
@@ -3998,6 +3998,18 @@ function doManageTahfid(array $req, array $auth): array
         return tahfidStaffSaveProgress($pdo, $req, $auth);
     }
 
+    if ($action === "laporan" || $action === "rekapsetoran") {
+        return tahfidLaporanSetoran($pdo, $req, $auth);
+    }
+
+    if ($action === "templateprogress" || $action === "exportprogress") {
+        return tahfidTemplateProgress($pdo, $req, $auth);
+    }
+
+    if ($action === "importprogress") {
+        return tahfidImportProgress($pdo, $req, $auth);
+    }
+
     fail(422, "Aksi tahfid tidak valid");
 }
 
@@ -4183,7 +4195,11 @@ function tahfidStaffSaveProgress(PDO $pdo, array $req, array $auth): array
     $ayatDari = (int) ($req["ayat_dari"] ?? 0);
     $ayatSampai = (int) ($req["ayat_sampai"] ?? 0);
     $catatan = (string) ($req["catatan"] ?? "");
-    $result = tahfidUpsertProgress($pdo, $siswa, $detailId, $ayatDari, $ayatSampai, $forceLunas, $catatan, $by);
+    try {
+        $result = tahfidUpsertProgress($pdo, $siswa, $detailId, $ayatDari, $ayatSampai, $forceLunas, $catatan, $by);
+    } catch (InvalidArgumentException $e) {
+        fail(422, $e->getMessage());
+    }
     writeLog("TAHFID_PROGRESS_SAVE", [
         "nocust" => $nocust,
         "detail" => $detailId,
@@ -4191,6 +4207,508 @@ function tahfidStaffSaveProgress(PDO $pdo, array $req, array $auth): array
         "by" => $by,
     ]);
     return $result;
+}
+
+function tahfidLaporanSetoran(PDO $pdo, array $req, array $auth): array
+{
+    $userCode01 = staffUnitCode01($auth);
+    $code01 = tahfidResolveStaffCode01($auth, (string) ($req["code01"] ?? ""));
+    $kelasFilter = trim((string) ($req["kelas"] ?? ""));
+    $q = trim((string) ($req["q"] ?? ""));
+    $emptyRingkasan = [
+        "jumlah_siswi" => 0,
+        "lunas_penuh" => 0,
+        "masih_proses" => 0,
+        "belum_mulai" => 0,
+    ];
+    if ($code01 === "") {
+        return [
+            "items" => [],
+            "ringkasan" => $emptyRingkasan,
+            "sekolah" => fetchSekolahMap($pdo),
+            "kelas" => [],
+            "need_unit" => true,
+            "scope_sekolah" => "",
+        ];
+    }
+
+    $sql = "
+        SELECT
+            TRIM(c.CUSTID) AS custid,
+            TRIM(c.NOCUST) AS nocust,
+            TRIM(c.NMCUST) AS nmcust,
+            TRIM(c.DESC02) AS kelas,
+            TRIM(c.CODE01) AS code01,
+            TRIM(ms.DESC01) AS sekolah
+        FROM scctcust c
+        LEFT JOIN mst_sekolah ms ON ms.CODE01 = c.CODE01
+        WHERE c.CODE01 = :code01
+          AND TRIM(c.NOCUST) <> ''
+        ORDER BY c.DESC02 ASC, c.NMCUST ASC
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(":code01", $code01, PDO::PARAM_STR);
+    $stmt->execute();
+
+    $roster = [];
+    $kelasOptions = [];
+    foreach ($stmt->fetchAll() ?: [] as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $nocust = trim((string) ($row["nocust"] ?? ""));
+        if ($nocust === "" || !secure_validate_nocust($nocust)) {
+            continue;
+        }
+        $kelas = trim((string) ($row["kelas"] ?? ""));
+        if ($kelas !== "") {
+            $kelasOptions[$kelas] = $kelas;
+        }
+        if ($kelasFilter !== "" && $kelas !== $kelasFilter) {
+            continue;
+        }
+        if ($q !== "") {
+            $hay = mb_strtolower($nocust . " " . trim((string) ($row["nmcust"] ?? "")));
+            if (!str_contains($hay, mb_strtolower($q))) {
+                continue;
+            }
+        }
+        $roster[] = [
+            "custid" => trim((string) ($row["custid"] ?? "")),
+            "nocust" => $nocust,
+            "nmcust" => trim((string) ($row["nmcust"] ?? "")),
+            "kelas" => $kelas,
+            "code01" => trim((string) ($row["code01"] ?? $code01)),
+            "sekolah" => trim((string) ($row["sekolah"] ?? "")),
+        ];
+    }
+    natcasesort($kelasOptions);
+
+    $jadwalByKelas = [];
+    $jdStmt = $pdo->prepare("
+        SELECT j.kelas, d.id, d.urut, d.surah_nomor, d.surah_nama
+        FROM aka_tahfid_jadwal j
+        INNER JOIN aka_tahfid_jadwal_detail d ON d.jadwal_id = j.id
+        WHERE j.code01 = :c
+        ORDER BY j.kelas ASC, d.urut ASC, d.id ASC
+    ");
+    $jdStmt->bindValue(":c", $code01, PDO::PARAM_STR);
+    $jdStmt->execute();
+    foreach ($jdStmt->fetchAll() ?: [] as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $kelas = trim((string) ($row["kelas"] ?? ""));
+        if ($kelas === "") {
+            continue;
+        }
+        $jadwalByKelas[$kelas][] = [
+            "id" => (int) $row["id"],
+            "surah_nomor" => (int) ($row["surah_nomor"] ?? 0),
+            "surah_nama" => trim((string) ($row["surah_nama"] ?? "")),
+        ];
+    }
+
+    $percepatanByCust = [];
+    $accStmt = $pdo->prepare("SELECT TRIM(custid) AS custid, TRIM(kelas_tujuan) AS kelas_tujuan FROM aka_tahfid_percepatan WHERE code01 = :c");
+    $accStmt->bindValue(":c", $code01, PDO::PARAM_STR);
+    $accStmt->execute();
+    foreach ($accStmt->fetchAll() ?: [] as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $cid = trim((string) ($row["custid"] ?? ""));
+        $tujuan = trim((string) ($row["kelas_tujuan"] ?? ""));
+        if ($cid === "" || $tujuan === "") {
+            continue;
+        }
+        $percepatanByCust[$cid][] = $tujuan;
+    }
+
+    $progressMap = [];
+    $setoranMap = [];
+    $custIds = [];
+    foreach ($roster as $siswa) {
+        $cid = trim((string) ($siswa["custid"] ?? ""));
+        if ($cid !== "") {
+            $custIds[$cid] = $cid;
+        }
+    }
+    if (count($custIds) > 0) {
+        $placeholders = [];
+        $bind = [];
+        $i = 0;
+        foreach ($custIds as $cid) {
+            $key = ":c" . $i;
+            $placeholders[] = $key;
+            $bind[$key] = $cid;
+            $i++;
+        }
+        $in = implode(", ", $placeholders);
+        $prStmt = $pdo->prepare("
+            SELECT TRIM(custid) AS custid, jadwal_detail_id, TRIM(status) AS status,
+                   ayat_dari, ayat_sampai, catatan, updated_at
+            FROM aka_tahfid_progress
+            WHERE custid IN ({$in})
+        ");
+        foreach ($bind as $key => $val) {
+            $prStmt->bindValue($key, $val, PDO::PARAM_STR);
+        }
+        $prStmt->execute();
+        foreach ($prStmt->fetchAll() ?: [] as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $cid = trim((string) ($row["custid"] ?? ""));
+            $did = (int) ($row["jadwal_detail_id"] ?? 0);
+            if ($cid === "" || $did < 1) {
+                continue;
+            }
+            $progressMap[$cid . ":" . $did] = [
+                "status" => strtolower(trim((string) ($row["status"] ?? ""))),
+                "ayat_dari" => (int) ($row["ayat_dari"] ?? 0),
+                "ayat_sampai" => (int) ($row["ayat_sampai"] ?? 0),
+                "catatan" => trim((string) ($row["catatan"] ?? "")),
+                "updated_at" => trim((string) ($row["updated_at"] ?? "")),
+            ];
+        }
+        $stStmt = $pdo->prepare("SELECT TRIM(custid) AS custid, jadwal_detail_id, created_at FROM aka_tahfid_setoran WHERE custid IN ({$in})");
+        foreach ($bind as $key => $val) {
+            $stStmt->bindValue($key, $val, PDO::PARAM_STR);
+        }
+        $stStmt->execute();
+        foreach ($stStmt->fetchAll() ?: [] as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $cid = trim((string) ($row["custid"] ?? ""));
+            $did = (int) ($row["jadwal_detail_id"] ?? 0);
+            if ($cid === "" || $did < 1) {
+                continue;
+            }
+            $setoranMap[$cid . ":" . $did] = trim((string) ($row["created_at"] ?? ""));
+        }
+    }
+
+    $items = [];
+    $ringkasan = $emptyRingkasan;
+    foreach ($roster as $siswa) {
+        $custid = $siswa["custid"];
+        $kelas = $siswa["kelas"];
+        $targets = [];
+        foreach ($jadwalByKelas[$kelas] ?? [] as $detail) {
+            $targets[(int) $detail["id"]] = $detail + ["sumber" => "kelas", "kelas" => $kelas];
+        }
+        $hasAccel = false;
+        foreach ($percepatanByCust[$custid] ?? [] as $tujuan) {
+            if ($tujuan === $kelas) {
+                continue;
+            }
+            foreach ($jadwalByKelas[$tujuan] ?? [] as $detail) {
+                $id = (int) $detail["id"];
+                if (isset($targets[$id])) {
+                    continue;
+                }
+                $targets[$id] = $detail + ["sumber" => "percepatan", "kelas" => $tujuan];
+                $hasAccel = true;
+            }
+        }
+
+        $lunas = 0;
+        $proses = 0;
+        $details = [];
+        foreach ($targets as $id => $detail) {
+            $key = $custid . ":" . $id;
+            $prog = $progressMap[$key] ?? [];
+            $status = is_array($prog) ? (string) ($prog["status"] ?? "") : strtolower(trim((string) $prog));
+            $ayatDari = is_array($prog) ? (int) ($prog["ayat_dari"] ?? 0) : 0;
+            $ayatSampai = is_array($prog) ? (int) ($prog["ayat_sampai"] ?? 0) : 0;
+            $catatan = is_array($prog) ? trim((string) ($prog["catatan"] ?? "")) : "";
+            $waktu = is_array($prog) ? trim((string) ($prog["updated_at"] ?? "")) : "";
+            if ($status === "" && isset($setoranMap[$key])) {
+                $status = "lunas";
+            }
+            if ($waktu === "" && isset($setoranMap[$key]) && trim((string) $setoranMap[$key]) !== "") {
+                $waktu = trim((string) $setoranMap[$key]);
+            }
+            if ($status === "lunas") {
+                $lunas++;
+            } elseif ($status === "proses") {
+                $proses++;
+            } else {
+                $status = "belum";
+            }
+            $ayatLabel = "";
+            if ($ayatDari > 0 && $ayatSampai > 0) {
+                $ayatLabel = $ayatDari === $ayatSampai
+                    ? ("Ayat " . $ayatDari)
+                    : ("Ayat " . $ayatDari . "–" . $ayatSampai);
+            } elseif ($status === "lunas") {
+                $ayatLabel = "Lengkap";
+            }
+            $details[] = [
+                "id" => $id,
+                "surah_nomor" => (int) ($detail["surah_nomor"] ?? 0),
+                "surah_nama" => trim((string) ($detail["surah_nama"] ?? "")),
+                "sumber" => (string) ($detail["sumber"] ?? "kelas"),
+                "kelas" => (string) ($detail["kelas"] ?? $kelas),
+                "status" => $status,
+                "ayat_dari" => $ayatDari,
+                "ayat_sampai" => $ayatSampai,
+                "ayat_label" => $ayatLabel,
+                "catatan" => $catatan,
+                "setor_at" => $waktu,
+            ];
+        }
+        $target = count($targets);
+        $belum = max(0, $target - $lunas - $proses);
+        $badge = "belum";
+        if ($target > 0 && $lunas === $target) {
+            $badge = "lunas";
+        } elseif ($proses > 0) {
+            $badge = "proses";
+        }
+        $persen = $target > 0 ? (int) floor(($lunas / $target) * 100) : 0;
+        $items[] = [
+            "custid" => $custid,
+            "nocust" => $siswa["nocust"],
+            "nmcust" => $siswa["nmcust"],
+            "kelas" => $kelas,
+            "code01" => $siswa["code01"],
+            "sekolah" => $siswa["sekolah"],
+            "target" => $target,
+            "lunas" => $lunas,
+            "proses" => $proses,
+            "belum" => $belum,
+            "persen" => $persen,
+            "badge" => $badge,
+            "percepatan" => $hasAccel,
+            "details" => $details,
+        ];
+        $ringkasan["jumlah_siswi"]++;
+        if ($badge === "lunas") {
+            $ringkasan["lunas_penuh"]++;
+        } elseif ($proses > 0) {
+            $ringkasan["masih_proses"]++;
+        } else {
+            $ringkasan["belum_mulai"]++;
+        }
+    }
+
+    return [
+        "items" => $items,
+        "ringkasan" => $ringkasan,
+        "sekolah" => fetchSekolahMap($pdo),
+        "kelas" => array_values($kelasOptions),
+        "need_unit" => false,
+        "code01" => $code01,
+        "scope_sekolah" => $userCode01 !== "" ? fetchScopeSekolahName($pdo, $userCode01) : "",
+    ];
+}
+
+function tahfidTemplateProgress(PDO $pdo, array $req, array $auth): array
+{
+    $userCode01 = staffUnitCode01($auth);
+    $nis = trim((string) ($req["nis"] ?? $req["nocust"] ?? ""));
+    $kelas = trim((string) ($req["kelas"] ?? ""));
+    $rows = [];
+
+    if ($nis !== "") {
+        if (!secure_validate_nocust($nis)) {
+            fail(422, "NIS siswi tidak valid");
+        }
+        $siswa = fetchSiswaByNocust($pdo, $nis, $userCode01);
+        if (!$siswa) {
+            fail(404, "Siswi tidak ditemukan pada unit Anda");
+        }
+        $rows = tahfidProgressTemplateRowsForSiswa($pdo, $siswa);
+        return [
+            "mode" => "siswi",
+            "siswa" => [
+                "nocust" => trim((string) $siswa["nocust"]),
+                "nmcust" => trim((string) $siswa["nmcust"]),
+                "kelas" => trim((string) $siswa["kelas"]),
+            ],
+            "rows" => $rows,
+            "jumlah" => count($rows),
+        ];
+    }
+
+    $code01 = tahfidResolveStaffCode01($auth, (string) ($req["code01"] ?? ""));
+    if ($code01 === "") {
+        fail(422, "Pilih unit terlebih dahulu");
+    }
+    if ($kelas === "") {
+        fail(422, "Pilih kelas untuk mengunduh template");
+    }
+
+    $sql = "
+        SELECT
+            TRIM(c.CUSTID) AS custid,
+            TRIM(c.NOCUST) AS nocust,
+            TRIM(c.NMCUST) AS nmcust,
+            TRIM(c.DESC02) AS kelas,
+            TRIM(c.CODE01) AS code01,
+            TRIM(ms.DESC01) AS sekolah
+        FROM scctcust c
+        LEFT JOIN mst_sekolah ms ON ms.CODE01 = c.CODE01
+        WHERE c.CODE01 = :code01
+          AND TRIM(c.DESC02) = :kelas
+          AND TRIM(c.NOCUST) <> ''
+        ORDER BY c.NMCUST ASC
+    ";
+    $stmt = $pdo->prepare($sql);
+    $stmt->bindValue(":code01", $code01, PDO::PARAM_STR);
+    $stmt->bindValue(":kelas", $kelas, PDO::PARAM_STR);
+    $stmt->execute();
+    foreach ($stmt->fetchAll() ?: [] as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $nocust = trim((string) ($row["nocust"] ?? ""));
+        if ($nocust === "" || !secure_validate_nocust($nocust)) {
+            continue;
+        }
+        $siswa = [
+            "custid" => trim((string) ($row["custid"] ?? "")),
+            "nocust" => $nocust,
+            "nmcust" => trim((string) ($row["nmcust"] ?? "")),
+            "kelas" => trim((string) ($row["kelas"] ?? $kelas)),
+            "code01" => trim((string) ($row["code01"] ?? $code01)),
+            "sekolah" => trim((string) ($row["sekolah"] ?? "")),
+        ];
+        foreach (tahfidProgressTemplateRowsForSiswa($pdo, $siswa) as $item) {
+            $rows[] = $item;
+        }
+    }
+
+    return [
+        "mode" => "kelas",
+        "kelas" => $kelas,
+        "code01" => $code01,
+        "rows" => $rows,
+        "jumlah" => count($rows),
+    ];
+}
+
+function tahfidProgressTemplateRowsForSiswa(PDO $pdo, array $siswa): array
+{
+    $rows = [];
+    foreach (tahfidSiswaJadwalGroups($pdo, $siswa, false) as $group) {
+        $asal = trim((string) ($group["sumber"] ?? "kelas")) === "percepatan" ? "Percepatan" : "Kelas";
+        $kelasSumber = trim((string) ($group["kelas"] ?? $siswa["kelas"] ?? ""));
+        foreach (is_array($group["details"] ?? null) ? $group["details"] : [] as $detail) {
+            $status = strtolower(trim((string) ($detail["progress_status"] ?? "belum")));
+            if ($status === "") {
+                $status = "belum";
+            }
+            $rows[] = [
+                "nis" => trim((string) $siswa["nocust"]),
+                "nama" => trim((string) $siswa["nmcust"]),
+                "kelas" => trim((string) $siswa["kelas"]),
+                "jadwal_detail_id" => (int) ($detail["id"] ?? 0),
+                "surah_nomor" => (int) ($detail["surah_nomor"] ?? 0),
+                "surah_nama" => trim((string) ($detail["surah_nama"] ?? "")),
+                "asal" => $asal,
+                "kelas_sumber" => $kelasSumber,
+                "status_saat_ini" => $status,
+                "ayat_dari" => (int) ($detail["progress_ayat_dari"] ?? 0),
+                "ayat_sampai" => (int) ($detail["progress_ayat_sampai"] ?? 0),
+                "catatan" => trim((string) ($detail["progress_catatan"] ?? "")),
+            ];
+        }
+    }
+
+    return $rows;
+}
+
+function tahfidImportProgress(PDO $pdo, array $req, array $auth): array
+{
+    $userCode01 = staffUnitCode01($auth);
+    $by = approvalStaffUsername($auth);
+    $rows = $req["rows"] ?? [];
+    if (!is_array($rows) || count($rows) === 0) {
+        fail(422, "Tidak ada baris untuk diimpor");
+    }
+    if (count($rows) > 500) {
+        fail(422, "Maksimal 500 baris per unggah");
+    }
+
+    $ok = 0;
+    $skip = 0;
+    $fail = 0;
+    $errors = [];
+    $line = 1;
+    foreach ($rows as $row) {
+        $line++;
+        if (!is_array($row)) {
+            $fail++;
+            $errors[] = ["baris" => $line, "alasan" => "Baris tidak valid"];
+            continue;
+        }
+        $nis = trim((string) ($row["nis"] ?? $row["nocust"] ?? ""));
+        $detailId = (int) ($row["jadwal_detail_id"] ?? $row["id"] ?? 0);
+        $status = strtolower(trim((string) ($row["status"] ?? $row["status_baru"] ?? "")));
+        $catatan = trim((string) ($row["catatan"] ?? ""));
+        $ayatDari = (int) ($row["ayat_dari"] ?? 0);
+        $ayatSampai = (int) ($row["ayat_sampai"] ?? 0);
+
+        if ($status === "") {
+            $skip++;
+            continue;
+        }
+        if (!in_array($status, ["proses", "lunas", "selesai", "lengkap"], true)) {
+            $fail++;
+            $errors[] = ["baris" => $line, "nis" => $nis, "alasan" => "Status baru harus proses atau lunas"];
+            continue;
+        }
+        if ($nis === "" || !secure_validate_nocust($nis)) {
+            $fail++;
+            $errors[] = ["baris" => $line, "nis" => $nis, "alasan" => "NIS tidak valid"];
+            continue;
+        }
+        if ($detailId < 1) {
+            $fail++;
+            $errors[] = ["baris" => $line, "nis" => $nis, "alasan" => "jadwal_detail_id kosong atau diubah"];
+            continue;
+        }
+        $forceLunas = in_array($status, ["lunas", "selesai", "lengkap"], true);
+        if (!$forceLunas && ($ayatDari < 1 || $ayatSampai < $ayatDari)) {
+            $fail++;
+            $errors[] = ["baris" => $line, "nis" => $nis, "alasan" => "Isi rentang ayat untuk status proses"];
+            continue;
+        }
+
+        $siswa = fetchSiswaByNocust($pdo, $nis, $userCode01);
+        if (!$siswa) {
+            $fail++;
+            $errors[] = ["baris" => $line, "nis" => $nis, "alasan" => "Siswi tidak ditemukan pada unit Anda"];
+            continue;
+        }
+
+        try {
+            tahfidUpsertProgress($pdo, $siswa, $detailId, $ayatDari, $ayatSampai, $forceLunas, $catatan, $by);
+            $ok++;
+        } catch (Throwable $e) {
+            $fail++;
+            $errors[] = ["baris" => $line, "nis" => $nis, "alasan" => $e->getMessage()];
+        }
+    }
+
+    writeLog("TAHFID_PROGRESS_IMPORT", [
+        "ok" => $ok,
+        "skip" => $skip,
+        "fail" => $fail,
+        "by" => $by,
+    ]);
+
+    return [
+        "ok" => $ok,
+        "skip" => $skip,
+        "fail" => $fail,
+        "errors" => array_slice($errors, 0, 50),
+        "message" => $ok . " tersimpan, " . $skip . " dilewati, " . $fail . " gagal",
+    ];
 }
 
 function tahfidSubmitSetoran(PDO $pdo, array $req, array $auth): array

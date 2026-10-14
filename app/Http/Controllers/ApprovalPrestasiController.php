@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\ApprovalPrestasiExport;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ApprovalPrestasiController extends Controller
 {
@@ -127,6 +129,58 @@ class ApprovalPrestasiController extends Controller
                 'tanggal_sampai' => $validated['tanggal_sampai'] ?? null,
             ], fn ($v) => $v !== null && $v !== ''))
             ->with('success', $message);
+    }
+
+    public function export(Request $request)
+    {
+        if (session('user.app') !== 'approval-prestasi') {
+            return redirect()->route('dashboard.presensi-sholat');
+        }
+
+        $status = $request->query('status', 'all');
+        if (! in_array($status, ['all', 'pending', 'approved', 'canceled'], true)) {
+            $status = 'all';
+        }
+        $q = trim((string) $request->query('q', ''));
+        $tanggalDari = trim((string) $request->query('tanggal_dari', ''));
+        $tanggalSampai = trim((string) $request->query('tanggal_sampai', ''));
+        if ($tanggalDari !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalDari)) {
+            $tanggalDari = '';
+        }
+        if ($tanggalSampai !== '' && ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $tanggalSampai)) {
+            $tanggalSampai = '';
+        }
+
+        [$items, $error] = $this->fetchItems($status, $q, $tanggalDari, $tanggalSampai);
+        $query = array_filter([
+            'status' => $status === 'all' ? null : $status,
+            'q' => $q,
+            'tanggal_dari' => $tanggalDari,
+            'tanggal_sampai' => $tanggalSampai,
+        ]);
+        if ($error !== null) {
+            return redirect()->route('approval.prestasi.index', $query)->with('error', $error);
+        }
+        if (count($items) === 0) {
+            return redirect()->route('approval.prestasi.index', $query)->with('error', 'Tidak ada data untuk diunduh.');
+        }
+
+        $statusLabel = match ($status) {
+            'pending' => 'Pending',
+            'approved' => 'Disetujui',
+            'canceled' => 'Ditolak',
+            default => 'Semua',
+        };
+        $periode = ($tanggalDari !== '' || $tanggalSampai !== '')
+            ? trim($tanggalDari.' s.d. '.$tanggalSampai)
+            : 'Semua';
+        $filename = 'approval_prestasi_'.strtolower($statusLabel).'_'.now()->format('Ymd_His').'.xlsx';
+
+        return Excel::download(new ApprovalPrestasiExport($items, [
+            'status_label' => $statusLabel,
+            'q' => $q,
+            'periode' => $periode,
+        ]), $filename);
     }
 
     private function fetchItems(string $status, string $q = '', string $tanggalDari = '', string $tanggalSampai = ''): array

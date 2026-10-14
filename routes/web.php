@@ -63,6 +63,7 @@ Route::middleware(['check.auth'])->group(function () {
     })->name('dashboard.presensi-sholat');
 
     Route::get('/approval-prestasi', [ApprovalPrestasiController::class, 'index'])->name('approval.prestasi.index');
+    Route::get('/approval-prestasi/excel', [ApprovalPrestasiController::class, 'export'])->name('approval.prestasi.export');
     Route::post('/approval-prestasi/action', [ApprovalPrestasiController::class, 'action'])->name('approval.prestasi.action');
     Route::get('/approval-prestasi/admin', [ApprovalAdminController::class, 'index'])->name('approval.admin.index');
     Route::post('/approval-prestasi/admin', [ApprovalAdminController::class, 'store'])->name('approval.admin.store');
@@ -74,6 +75,7 @@ Route::middleware(['check.auth'])->group(function () {
     Route::post('/approval-prestasi/katalog/delete', [ApprovalKatalogController::class, 'destroy'])->name('approval.katalog.delete');
 
     Route::get('/catatan-kepribadian', [CatatanKepribadianController::class, 'index'])->name('catatan.kepribadian.index');
+    Route::get('/catatan-kepribadian/excel', [CatatanKepribadianController::class, 'export'])->name('catatan.kepribadian.export');
     Route::get('/catatan-kepribadian/tambah', [CatatanKepribadianController::class, 'create'])->name('catatan.kepribadian.create');
     Route::get('/catatan-kepribadian/siswa', [CatatanKepribadianController::class, 'searchSiswa'])->name('catatan.kepribadian.siswa');
     Route::get('/catatan-kepribadian/{id}/ubah', [CatatanKepribadianController::class, 'edit'])->name('catatan.kepribadian.edit')->whereNumber('id');
@@ -99,7 +101,13 @@ Route::middleware(['check.auth'])->group(function () {
     Route::post('/tahfid/percepatan', [TahfidController::class, 'storePercepatan'])->name('tahfid.percepatan.store');
     Route::post('/tahfid/percepatan/delete', [TahfidController::class, 'destroyPercepatan'])->name('tahfid.percepatan.delete');
     Route::get('/tahfid/progress', [TahfidController::class, 'progress'])->name('tahfid.progress.index');
+    Route::get('/tahfid/progress/template', [TahfidController::class, 'exportProgressTemplate'])->name('tahfid.progress.template');
+    Route::post('/tahfid/progress/import', [TahfidController::class, 'importProgress'])->name('tahfid.progress.import');
+    Route::post('/tahfid/progress/import/proses', [TahfidController::class, 'confirmImportProgress'])->name('tahfid.progress.import.confirm');
+    Route::post('/tahfid/progress/import/batal', [TahfidController::class, 'cancelImportProgress'])->name('tahfid.progress.import.cancel');
     Route::post('/tahfid/progress', [TahfidController::class, 'saveProgress'])->name('tahfid.progress.store');
+    Route::get('/tahfid/laporan', [TahfidController::class, 'laporan'])->name('tahfid.laporan.index');
+    Route::get('/tahfid/laporan/excel', [TahfidController::class, 'exportLaporan'])->name('tahfid.laporan.export');
     Route::get('/tahfid/hafalan', [TahfidController::class, 'siswa'])->name('tahfid.siswa.index');
     Route::post('/tahfid/hafalan/setor', [TahfidController::class, 'setor'])->name('tahfid.siswa.setor');
     Route::get('/tahfid/admin', [ApprovalAdminController::class, 'index'])->name('tahfid.admin.index');
