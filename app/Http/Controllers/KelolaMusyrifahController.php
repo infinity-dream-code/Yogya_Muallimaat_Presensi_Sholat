@@ -12,6 +12,8 @@ class KelolaMusyrifahController extends Controller
 {
     private const SUPERADMIN_ROLES = ['admin', 'superadmin', 'super admin'];
 
+    private const MUSYRIFAH_ROLES = ['musrifah', 'musyrifah'];
+
     private const UNIT_SQL = "COALESCE(NULLIF(TRIM(sc.CODE02), ''), TRIM(ms.DESC01), TRIM(sc.CODE01))";
 
     public function musyrifah()
@@ -29,7 +31,7 @@ class KelolaMusyrifahController extends Controller
 
         $entries = DB::table('sholat_user')
             ->select('idincrement', 'username', 'nama', 'role')
-            ->orderByRaw("CASE WHEN LOWER(TRIM(role)) IN ('admin', 'superadmin') THEN 0 ELSE 1 END")
+            ->whereRaw('LOWER(TRIM(role)) IN (?, ?)', self::MUSYRIFAH_ROLES)
             ->orderBy('nama')
             ->get()
             ->map(function ($row) use ($jumlahSiswa) {
@@ -119,6 +121,7 @@ class KelolaMusyrifahController extends Controller
         if ($musrifah !== '') {
             $username = DB::table('sholat_user')
                 ->whereRaw('LOWER(TRIM(username)) = ?', [mb_strtolower($musrifah)])
+                ->whereRaw('LOWER(TRIM(role)) IN (?, ?)', self::MUSYRIFAH_ROLES)
                 ->value('username');
             if ($username === null) {
                 return back()->with('error', 'Musyrifah tidak ditemukan di data user.');
@@ -176,7 +179,7 @@ class KelolaMusyrifahController extends Controller
 
         $byUsername = [];
         $byNama = [];
-        foreach (DB::table('sholat_user')->get(['username', 'nama']) as $u) {
+        foreach ($this->musyrifahOptions() as $u) {
             $username = trim((string) $u->username);
             $byUsername[mb_strtolower($username)] = $username;
             $namaKey = mb_strtolower(trim((string) $u->nama));
@@ -276,7 +279,7 @@ class KelolaMusyrifahController extends Controller
     private function musyrifahOptions()
     {
         return DB::table('sholat_user')
-            ->whereRaw('LOWER(TRIM(role)) NOT IN (?, ?, ?)', self::SUPERADMIN_ROLES)
+            ->whereRaw('LOWER(TRIM(role)) IN (?, ?)', self::MUSYRIFAH_ROLES)
             ->orderBy('nama')
             ->get(['username', 'nama']);
     }

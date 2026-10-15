@@ -23,7 +23,7 @@
 
     <div class="card" style="max-width:640px;">
         <p style="margin-top:0;">
-            Upload file Excel untuk mengisi kolom musyrifah siswa di <code>scctcust</code>.
+            Upload file Excel untuk mengisi musyrifah siswa.
             Format kolom (baris pertama boleh berisi judul):
         </p>
         <div class="table-wrap" style="margin-bottom:14px;">

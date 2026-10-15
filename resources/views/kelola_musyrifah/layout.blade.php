@@ -61,6 +61,16 @@
         tr:last-child td { border-bottom: none; }
         .chip { display: inline-block; font-size: 0.75rem; padding: 3px 9px; border-radius: 999px; background: #f5f3ff; color: #6b21a8; white-space: nowrap; }
         .chip-empty { background: #fef3c7; color: #92400e; }
+        .ss-wrap { position: relative; min-width: 220px; }
+        .ss-wrap select { display: none; }
+        .ss-input { width: 100%; padding-right: 34px; cursor: text; }
+        .ss-caret { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #9ca3af; font-size: 0.75rem; pointer-events: none; }
+        .ss-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); max-height: 260px; overflow-y: auto; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12); z-index: 60; display: none; padding: 4px; }
+        .ss-wrap.open .ss-list { display: block; }
+        .ss-option { padding: 8px 10px; border-radius: 8px; font-size: 0.86rem; cursor: pointer; }
+        .ss-option:hover, .ss-option.ss-active { background: #f5f3ff; color: #6b21a8; }
+        .ss-option.ss-selected { font-weight: 600; }
+        .ss-empty { padding: 8px 10px; font-size: 0.82rem; color: #9ca3af; }
         .pagination { display: flex; flex-wrap: wrap; gap: 6px; justify-content: space-between; align-items: center; margin-top: 14px; }
 
         @media (min-width: 960px) {
@@ -169,6 +179,121 @@
         });
         backdrop.addEventListener('click', closeDrawer);
     })();
+
+    function enhanceSearchSelect(select) {
+        if (!select || select.dataset.ssReady) return;
+        select.dataset.ssReady = '1';
+
+        var wrap = document.createElement('div');
+        wrap.className = 'ss-wrap';
+        select.parentNode.insertBefore(wrap, select);
+        wrap.appendChild(select);
+
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'input ss-input';
+        input.autocomplete = 'off';
+        input.placeholder = select.dataset.placeholder || 'Ketik untuk mencari…';
+        wrap.appendChild(input);
+
+        var caret = document.createElement('i');
+        caret.className = 'fas fa-chevron-down ss-caret';
+        wrap.appendChild(caret);
+
+        var list = document.createElement('div');
+        list.className = 'ss-list';
+        wrap.appendChild(list);
+
+        var activeIndex = -1;
+
+        function selectedText() {
+            var opt = select.options[select.selectedIndex];
+            return opt ? opt.text : '';
+        }
+
+        function render(keyword) {
+            var q = (keyword || '').trim().toLowerCase();
+            list.innerHTML = '';
+            activeIndex = -1;
+            var count = 0;
+            Array.prototype.forEach.call(select.options, function (opt) {
+                if (q !== '' && opt.text.toLowerCase().indexOf(q) === -1) return;
+                var item = document.createElement('div');
+                item.className = 'ss-option' + (opt.selected ? ' ss-selected' : '');
+                item.textContent = opt.text;
+                item.dataset.value = opt.value;
+                item.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    choose(opt.value);
+                });
+                list.appendChild(item);
+                count++;
+            });
+            if (count === 0) {
+                var empty = document.createElement('div');
+                empty.className = 'ss-empty';
+                empty.textContent = 'Tidak ditemukan';
+                list.appendChild(empty);
+            }
+        }
+
+        function open() {
+            wrap.classList.add('open');
+            input.value = '';
+            input.placeholder = selectedText() || select.dataset.placeholder || 'Ketik untuk mencari…';
+            render('');
+        }
+
+        function close() {
+            wrap.classList.remove('open');
+            input.value = selectedText();
+        }
+
+        function choose(value) {
+            select.value = value;
+            select.dispatchEvent(new Event('change', { bubbles: true }));
+            close();
+            input.blur();
+        }
+
+        function moveActive(step) {
+            var items = list.querySelectorAll('.ss-option');
+            if (!items.length) return;
+            if (activeIndex >= 0 && items[activeIndex]) items[activeIndex].classList.remove('ss-active');
+            activeIndex = (activeIndex + step + items.length) % items.length;
+            items[activeIndex].classList.add('ss-active');
+            items[activeIndex].scrollIntoView({ block: 'nearest' });
+        }
+
+        input.addEventListener('focus', open);
+        input.addEventListener('click', function () { if (!wrap.classList.contains('open')) open(); });
+        input.addEventListener('input', function () {
+            wrap.classList.add('open');
+            render(input.value);
+        });
+        input.addEventListener('blur', close);
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1); }
+            else if (e.key === 'Enter') {
+                var items = list.querySelectorAll('.ss-option');
+                var target = items[activeIndex >= 0 ? activeIndex : 0];
+                if (wrap.classList.contains('open') && target) {
+                    e.preventDefault();
+                    choose(target.dataset.value);
+                }
+            } else if (e.key === 'Escape') { input.blur(); }
+        });
+
+        document.addEventListener('mousedown', function (e) {
+            if (wrap.classList.contains('open') && !wrap.contains(e.target)) close();
+        });
+
+        select.ssSync = function () { input.value = selectedText(); };
+        select.ssSync();
+    }
+
+    document.querySelectorAll('select.js-search-select').forEach(enhanceSearchSelect);
 </script>
 @stack('scripts')
 </body>

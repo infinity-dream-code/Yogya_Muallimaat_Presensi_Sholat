@@ -8,7 +8,7 @@
     .modal-backdrop.open { display: flex; }
     .modal { background: #fff; border-radius: 18px; padding: 20px; width: 100%; max-width: 420px; box-shadow: 0 24px 48px rgba(0,0,0,0.2); }
     .modal h3 { margin: 0 0 4px; font-size: 1.05rem; }
-    .modal .select { width: 100%; margin: 14px 0 18px; }
+    .modal .ss-wrap { margin: 14px 0 18px; }
     .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 </style>
 @endpush
@@ -26,7 +26,7 @@
                     <option value="{{ $unit }}" @selected($unitFilter === $unit)>{{ $unit }}</option>
                 @endforeach
             </select>
-            <select name="musyrifah" class="select">
+            <select name="musyrifah" class="select js-search-select" data-placeholder="Cari musyrifah…">
                 <option value="">Semua musyrifah</option>
                 <option value="__none__" @selected($musyrifahFilter === '__none__')>Belum ada musyrifah</option>
                 @foreach($musyrifahList as $m)
@@ -113,7 +113,7 @@
             <input type="hidden" name="custid" id="editCustid">
             <h3 id="editNama">-</h3>
             <div class="muted" id="editNis">-</div>
-            <select name="musrifah" id="editMusrifah" class="select">
+            <select name="musrifah" id="editMusrifah" class="select js-search-select" data-placeholder="Ketik nama musyrifah…">
                 <option value="">— Tanpa musyrifah —</option>
                 @foreach($musyrifahList as $m)
                     <option value="{{ $m->username }}">{{ $m->nama }} ({{ $m->username }})</option>
@@ -146,6 +146,7 @@
                         break;
                     }
                 }
+                if (select.ssSync) select.ssSync();
                 modal.classList.add('open');
             });
         });
