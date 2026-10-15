@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
@@ -26,7 +27,7 @@ class PersistentLogin
             }
 
             // Manual encrypt (cookie is excluded from EncryptCookies) to avoid double-encrypt size blow-up.
-            $value = Crypt::encryptString($payload);
+            $value = self::encrypter()->encryptString($payload);
 
             // Browser limit ~4KB; if too large, drop bulky token fields and retry.
             if (strlen($value) > 3500) {
@@ -36,7 +37,7 @@ class PersistentLogin
                 if ($payload === false) {
                     return;
                 }
-                $value = Crypt::encryptString($payload);
+                $value = self::encrypter()->encryptString($payload);
             }
 
             if (strlen($value) > 3800) {
@@ -75,23 +76,37 @@ class PersistentLogin
             return null;
         }
 
-        try {
-            // Prefer decrypt (new format). Fall back to plain JSON (legacy).
+        // Stable key first, then APP_KEY (cookies issued before the stable key), then plain JSON (oldest format).
+        $decoders = [
+            fn (string $v) => self::encrypter()->decryptString($v),
+            fn (string $v) => Crypt::decryptString($v),
+            fn (string $v) => $v,
+        ];
+
+        foreach ($decoders as $decode) {
             try {
-                $json = Crypt::decryptString($raw);
+                $data = json_decode($decode($raw), true);
             } catch (\Throwable $e) {
-                $json = $raw;
+                continue;
             }
-
-            $data = json_decode($json, true);
-            if (! is_array($data) || empty($data['username'])) {
-                return null;
+            if (is_array($data) && ! empty($data['username'])) {
+                return $data;
             }
-
-            return $data;
-        } catch (\Throwable $e) {
-            return null;
         }
+
+        return null;
+    }
+
+    private static function encrypter(): Encrypter
+    {
+        static $encrypter = null;
+
+        if ($encrypter === null) {
+            $secret = (string) config('services.persistent_login.secret');
+            $encrypter = new Encrypter(hash('sha256', $secret, true), 'AES-256-CBC');
+        }
+
+        return $encrypter;
     }
 
     public static function restoreIntoSession(\Illuminate\Http\Request $request): bool

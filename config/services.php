@@ -36,6 +36,11 @@ return [
         'secret_key' => env('CLOUDFLARE_TURNSTILE_SECRET_KEY'),
     ],
 
+    'persistent_login' => [
+        // Must stay identical across deploys; independent of APP_KEY so key rotation never logs users out.
+        'secret' => env('PERSISTENT_LOGIN_SECRET', 'muallimat-presensi-persistent-login-v1-9f3c7e1a5b'),
+    ],
+
     'laporan_sso' => [
         'url' => env('LAPORAN_SSO_URL', 'https://muallimaat-laporan.smartpayment.co.id'),
         'secret' => env('PORTAL_SSO_SECRET', 'a7c2a8a9b3c4a5a6a7a8a9b0c1a2a3'),
