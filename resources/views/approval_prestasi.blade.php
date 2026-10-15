@@ -99,6 +99,7 @@
                         <th>Prestasi</th>
                         <th>Poin</th>
                         <th>Periode</th>
+                        <th>Tgl. pelaksanaan</th>
                         <th class="sortable" id="sortCreated">Diunggah <i class="fas fa-sort"></i></th>
                         <th>Status</th>
                         <th>Bukti</th>
@@ -134,6 +135,8 @@
                             }
                             $semester = (string) ($item['semester'] ?? '');
                             $semesterLabel = $semester === '1' ? 'Ganjil' : ($semester === '2' ? 'Genap' : ($semester !== '' ? 'S'.$semester : '-'));
+                            $tglLomba = trim((string) ($item['tanggal_pelaksanaan'] ?? ''));
+                            $tglLombaLabel = $tglLomba !== '' ? date('d/m/Y', strtotime($tglLomba)) : '-';
                             $bukti = trim((string) ($item['url'] ?? ''));
                             $isDrive = $bukti !== '' && (str_contains($bukti, 'drive.google.com') || str_contains($bukti, 'docs.google.com') || str_contains($bukti, 'drive.usercontent.google.com'));
                         @endphp
@@ -174,6 +177,7 @@
                                 <div>{{ $item['bta'] ?: '-' }}</div>
                                 <div class="cell-sub">{{ $semesterLabel }}</div>
                             </td>
+                            <td class="mono">{{ $tglLombaLabel }}</td>
                             <td class="mono">{{ $createdLabel }}</td>
                             <td>
                                 <span class="badge {{ $statusBadge['class'] }}">{{ $statusBadge['label'] }}</span>
@@ -297,7 +301,7 @@
                 tr.className = 'group-row';
                 tr.setAttribute('data-group', key);
                 var td = document.createElement('td');
-                td.colSpan = 9;
+                td.colSpan = 10;
                 var open = !collapsed[key];
                 td.innerHTML = '<i class="fas ' + (open ? 'fa-chevron-down' : 'fa-chevron-right') + '"></i> ' +
                     key + '<span class="group-count">' + map[key].length + '</span>';

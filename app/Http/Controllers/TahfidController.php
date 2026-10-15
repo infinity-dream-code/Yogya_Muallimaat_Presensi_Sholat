@@ -458,7 +458,7 @@ class TahfidController extends Controller
         $validated = $request->validate([
             'nis' => ['required', 'string', 'max:50'],
             'jadwal_detail_id' => ['required', 'integer', 'min:1'],
-            'status' => ['required', 'in:proses,lunas'],
+            'status' => ['required', 'in:proses,lunas,tuntas'],
             'ayat_dari' => ['nullable', 'integer', 'min:1'],
             'ayat_sampai' => ['nullable', 'integer', 'min:1'],
             'catatan' => ['nullable', 'string', 'max:500'],
@@ -757,7 +757,7 @@ class TahfidController extends Controller
         }
 
         $statusLabel = match ((string) ($data['status'] ?? '')) {
-            'lunas' => 'Lunas semua',
+            'lunas' => 'Tuntas semua',
             'proses' => 'Masih proses',
             'belum_selesai' => 'Belum selesai',
             default => 'Keseluruhan',
@@ -1416,6 +1416,10 @@ class TahfidController extends Controller
             $detailId = (int) ($row['jadwal_detail_id'] ?? 0);
             $nama = trim((string) ($row['nama'] ?? ''));
             $surat = trim((string) ($row['surah_nama'] ?? ''));
+            $statusNow = strtolower(trim((string) ($row['status_saat_ini'] ?? '')));
+            if (in_array($statusNow, ['lunas', 'selesai', 'lengkap', 'tuntas'], true)) {
+                $statusNow = 'tuntas';
+            }
             if ($status === '') {
                 $skipped++;
                 continue;
@@ -1426,14 +1430,14 @@ class TahfidController extends Controller
                 'nama' => $nama,
                 'kelas' => trim((string) ($row['kelas'] ?? '')),
                 'surat' => $surat !== '' ? $surat : ('ID '.$detailId),
-                'status_saat_ini' => strtolower(trim((string) ($row['status_saat_ini'] ?? ''))),
+                'status_saat_ini' => $statusNow,
                 'status' => $status,
                 'ayat_dari' => (int) ($row['ayat_dari'] ?? 0),
                 'ayat_sampai' => (int) ($row['ayat_sampai'] ?? 0),
                 'catatan' => trim((string) ($row['catatan'] ?? '')),
             ];
-            if (! in_array($status, ['proses', 'lunas', 'selesai', 'lengkap'], true)) {
-                $item['alasan'] = 'Status baru harus proses atau lunas';
+            if (! in_array($status, ['proses', 'lunas', 'tuntas', 'selesai', 'lengkap'], true)) {
+                $item['alasan'] = 'Status baru harus proses atau tuntas';
                 $invalid[] = $item;
                 continue;
             }

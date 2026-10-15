@@ -184,6 +184,7 @@ Data prestasi yang diinput.
 | `keterangan` | deskripsi | Teks, maks. 500, tanpa HTML |
 | `penyelenggara` | lembaga | Teks, maks. 150 |
 | `no_sertifikat` | nomor sertifikat | Teks, maks. 80 |
+| `tanggal_pelaksanaan` | tanggal lomba | `DATE` `YYYY-MM-DD`. Auto-ALTER jika belum ada. Migrasi: `ws/sql/aka_reward_tanggal_pelaksanaan.sql` |
 | `nilai_penghargaan` | nilai | Disalin dari `aka_prestasi_poin.nilai` saat submit (bukan dari klien) |
 | `bta` | tahun akademik | Sama dengan `tahun_akademik` / `mst_thn_aka.thn_aka` |
 | `semester` | semester | `1` atau `2` |
@@ -393,7 +394,7 @@ Hanya `method`. `data.tahun_akademik`: array string `YYYY/YYYY`.
 
 Butuh JWT siswa. Tanpa field tambahan. Mengembalikan pengajuan milik `custid` + `nocust` di token (maks. 200, terbaru dulu).
 
-`data.items[]`: `id`, `nisn`, `jenis_prestasi`, `prestasi_kategori_id`, `prestasi_tingkat_id`, `prestasi_poin_id`, `keterangan`, `penyelenggara`, `no_sertifikat`, `nilai_penghargaan`, `tahun_akademik`, `semester`, `url`, `isapproved`, `catatan_admin` (hanya jika `canceled`), `can_edit` (true jika `canceled`), `created_at`, `updated_at`.
+`data.items[]`: `id`, `nisn`, `jenis_prestasi`, `prestasi_kategori_id`, `prestasi_tingkat_id`, `prestasi_poin_id`, `keterangan`, `penyelenggara`, `no_sertifikat`, `tanggal_pelaksanaan`, `nilai_penghargaan`, `tahun_akademik`, `semester`, `url`, `isapproved`, `catatan_admin` (hanya jika `canceled`), `can_edit` (true jika `canceled`), `created_at`, `updated_at`.
 
 `data.total_skor`: SUM `nilai_penghargaan` yang `isapproved=approve`. `data.jumlah`: hitungan `pending` / `approve` / `canceled`.
 
@@ -412,6 +413,7 @@ Butuh JWT siswa. Tanpa field tambahan. Mengembalikan pengajuan milik `custid` + 
 | `keterangan` | ya | maks. 500 |
 | `penyelenggara` | ya | maks. 150 |
 | `no_sertifikat` | ya | maks. 80 |
+| `tanggal_pelaksanaan` | ya | `YYYY-MM-DD` (alias: `tanggal_lomba`, `tgl_pelaksanaan`) |
 | `url` | ya | tautan Google Drive |
 
 `nilai_penghargaan` dan `jenis_prestasi` disusun server dari master poin. Tanpa `id`: INSERT status `pending`. Dengan `id`: UPDATE baris ditolak, status kembali `pending`, `catatan_admin` / `approvedby` / `approveddate` dikosongkan. `data`: `id`, `url`, plus `isapproved` saat kirim ulang.
@@ -482,11 +484,13 @@ Butuh JWT. Siswa: `action` `myjadwal`, `submitsetoran`. Staf: `list` / `listjadw
 
 **laporan / rekapsetoran** (staf): rekap snapshot progress seluruh siswi di unit. Filter `code01` (superadmin; Musrifah memakai unitnya), `kelas`, `q` (NIS/nama). Tanpa unit: `need_unit=true`, `items` kosong.
 
-`data.items` per siswi: `custid`, `nocust`, `nmcust`, `kelas`, `target`, `lunas`, `proses`, `belum`, `persen`, `badge` (`belum` / `proses` / `lunas`), `percepatan`, `details`. Tiap detail: surat, status, `ayat_dari` / `ayat_sampai` / `ayat_label`, `catatan`, `setor_at`. Target = jadwal kelas + percepatan. Status surat dari `aka_tahfid_progress`, fallback `aka_tahfid_setoran` = lunas. Halaman laporan hanya menampilkan siswi yang punya jadwal (`target > 0`). Plus `ringkasan` (`jumlah_siswi`, `lunas_penuh`, `masih_proses`, `belum_mulai`), `sekolah`, `kelas`.
+`data.items` per siswi: `custid`, `nocust`, `nmcust`, `kelas`, `target`, `lunas`, `proses`, `belum`, `persen`, `badge` (`belum` / `proses` / `lunas`), `percepatan`, `details`. Tiap detail: surat, status, `ayat_dari` / `ayat_sampai` / `ayat_label`, `catatan`, `setor_at`. Target = jadwal kelas + percepatan. Status surat dari `aka_tahfid_progress`, fallback `aka_tahfid_setoran` = lunas. Nilai status di API/DB tetap `lunas`; redaksi tampilan = Tuntas. Halaman laporan hanya menampilkan siswi yang punya jadwal (`target > 0`). Plus `ringkasan` (`jumlah_siswi`, `lunas_penuh`, `masih_proses`, `belum_mulai`), `sekolah`, `kelas`.
 
-**templateprogress / exportprogress** (staf): unduh baris template setoran. `nis` = satu siswi, atau `code01` + `kelas` = seluruh siswi kelas. `data.rows`: `nis`, `nama`, `kelas`, `jadwal_detail_id`, surat, `asal`, `status_saat_ini`.
+**saveprogress** (staf): `status` `proses` atau `lunas` (`tuntas` / `selesai` / `lengkap` = alias lunas). Untuk proses, isi `ayat_dari` dan `ayat_sampai`.
 
-**importprogress** (staf): `rows[]` maks. 500. Per baris: `nis`, `jadwal_detail_id`, `status` (`proses`/`lunas`, kosong = lewati), `ayat_dari`, `ayat_sampai`, `catatan`. Memakai `tahfidUpsertProgress`. `data`: `ok`, `skip`, `fail`, `errors`, `message`.
+**templateprogress / exportprogress** (staf): unduh baris template setoran. `nis` = satu siswi, atau `code01` + `kelas` = seluruh siswi kelas. `data.rows`: `nis`, `nama`, `kelas`, `jadwal_detail_id`, surat, `asal`, `status_saat_ini` (`lunas` ditampilkan sebagai `tuntas` di Excel).
+
+**importprogress** (staf): `rows[]` maks. 500. Per baris: `nis`, `jadwal_detail_id`, `status` (`proses`/`lunas`/`tuntas`; `tuntas` = alias lunas; kosong = lewati), `ayat_dari`, `ayat_sampai`, `catatan`. Memakai `tahfidUpsertProgress`. `data`: `ok`, `skip`, `fail`, `errors`, `message`.
 
 ---
 

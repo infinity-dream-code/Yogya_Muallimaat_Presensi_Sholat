@@ -67,7 +67,7 @@
                                     <td>{{ $row['ayat_label'] ?? '-' }}</td>
                                     <td>
                                         @if($done)
-                                            <span class="badge approved">Lunas</span>
+                                            <span class="badge approved">Tuntas</span>
                                             <div class="cell-sub">{{ $row['progress_at'] ?: ($row['setor_at'] ?? '') }}</div>
                                         @elseif($st === 'proses')
                                             <span class="badge pending">Proses</span>
@@ -80,10 +80,10 @@
                                         @if($done)
                                             <span class="cell-sub">Selesai</span>
                                         @else
-                                            <form method="POST" action="{{ route('tahfid.siswa.setor') }}" class="js-confirm" data-title="Catat setoran?" data-text="Setoran {{ $row['surah_nama'] }} akan tercatat lunas.">
+                                            <form method="POST" action="{{ route('tahfid.siswa.setor') }}" class="js-confirm" data-title="Catat setoran?" data-text="Setoran {{ $row['surah_nama'] }} akan tercatat tuntas.">
                                                 @csrf
                                                 <input type="hidden" name="jadwal_detail_id" value="{{ $row['id'] }}">
-                                                <button type="submit" class="btn btn-primary btn-sm">Setor lunas</button>
+                                                <button type="submit" class="btn btn-primary btn-sm">Setor tuntas</button>
                                             </form>
                                         @endif
                                     </td>

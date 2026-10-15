@@ -51,14 +51,14 @@ class TahfidLaporanRekapSheet implements FromArray, WithTitle, WithEvents
         $rows[] = [
             'Ringkasan',
             ((int) ($this->ringkasan['jumlah_siswi'] ?? 0)).' siswi berjadwal · '.
-            ((int) ($this->ringkasan['lunas_penuh'] ?? 0)).' lunas penuh · '.
+            ((int) ($this->ringkasan['lunas_penuh'] ?? 0)).' tuntas penuh · '.
             ((int) ($this->ringkasan['masih_proses'] ?? 0)).' proses · '.
             ((int) ($this->ringkasan['belum_mulai'] ?? 0)).' belum mulai',
             '', '', '', '', '', '', '', '', '', '', '', '', '',
         ];
         $rows[] = ['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''];
         $rows[] = [
-            'No', 'NIS', 'Nama', 'Kelas', 'Jml surat', 'Lunas', 'Proses', 'Belum',
+            'No', 'NIS', 'Nama', 'Kelas', 'Jml surat', 'Tuntas', 'Proses', 'Belum',
             'Persen', 'Status', 'Percepatan', 'Jadwal surat', 'Sudah setor', 'Masih proses', 'Belum setor', 'Catatan terakhir',
         ];
 
@@ -219,7 +219,7 @@ function tahfidLaporanStatusLabel(string $status): string
     $status = strtolower(trim($status));
 
     return match ($status) {
-        'lunas' => 'Lunas',
+        'lunas' => 'Tuntas',
         'proses' => 'Proses',
         default => 'Belum',
     };
@@ -282,7 +282,7 @@ function tahfidLaporanFillByValue($sheet, string $cell): void
 {
     $val = strtolower(trim((string) $sheet->getCell($cell)->getValue()));
     $rgb = match ($val) {
-        'lunas', 'ya' => 'DCEEE1',
+        'lunas', 'tuntas', 'ya' => 'DCEEE1',
         'proses' => 'F3E6C8',
         'belum', 'tidak' => 'EEEAE0',
         default => null,

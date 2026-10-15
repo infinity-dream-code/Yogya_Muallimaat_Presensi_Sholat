@@ -18,7 +18,7 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
 
     public function array(): array
     {
-        $pad = fn (array $row) => array_pad($row, 16, '');
+        $pad = fn (array $row) => array_pad($row, 17, '');
         $rows = [];
         $rows[] = $pad(['Laporan Approval Prestasi']);
         $rows[] = $pad([
@@ -33,7 +33,7 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
         $rows[] = $pad([]);
         $rows[] = [
             'No', 'NIS', 'Nama', 'Kelas', 'Sekolah', 'Kategori', 'Tingkat', 'Capaian',
-            'Poin', 'Tahun ajaran', 'Semester', 'Diunggah', 'Status', 'Disetujui/ditolak oleh', 'Catatan admin', 'Bukti',
+            'Poin', 'Tahun ajaran', 'Semester', 'Tgl. pelaksanaan', 'Diunggah', 'Status', 'Disetujui/ditolak oleh', 'Catatan admin', 'Bukti',
         ];
 
         $no = 1;
@@ -56,6 +56,7 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
             $semester = (string) ($item['semester'] ?? '');
             $semesterLabel = $semester === '1' ? 'Ganjil' : ($semester === '2' ? 'Genap' : ($semester !== '' ? 'S'.$semester : ''));
             $created = trim((string) ($item['created_at'] ?? ''));
+            $tglLomba = trim((string) ($item['tanggal_pelaksanaan'] ?? ''));
             $rows[] = [
                 $no++,
                 trim((string) ($item['nocust'] ?? '')),
@@ -68,6 +69,7 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
                 (float) ($item['nilai_penghargaan'] ?? 0),
                 trim((string) ($item['bta'] ?? '')),
                 $semesterLabel,
+                $tglLomba,
                 $created,
                 $status,
                 trim((string) ($item['approvedby'] ?? '')),
@@ -84,7 +86,7 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
         return [
             AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
-                $lastCol = 'P';
+                $lastCol = 'Q';
                 $headerRow = 5;
                 $lastRow = max($headerRow, (int) $sheet->getHighestRow());
                 $sheet->mergeCells('A1:'.$lastCol.'1');
@@ -103,12 +105,12 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
                 $sheet->getStyle('A'.$headerRow.':'.$lastCol.$lastRow)->getAlignment()->setWrapText(true);
                 $sheet->freezePane('A'.($headerRow + 1));
                 $sheet->setAutoFilter('A'.$headerRow.':'.$lastCol.$lastRow);
-                $widths = [6, 14, 28, 14, 18, 22, 16, 22, 10, 14, 12, 18, 12, 18, 28, 28];
+                $widths = [6, 14, 28, 14, 18, 22, 16, 22, 10, 14, 12, 14, 18, 12, 18, 28, 28];
                 foreach ($widths as $i => $w) {
                     $sheet->getColumnDimensionByColumn($i + 1)->setWidth($w);
                 }
                 for ($r = $headerRow + 1; $r <= $lastRow; $r++) {
-                    $val = strtolower(trim((string) $sheet->getCell('M'.$r)->getValue()));
+                    $val = strtolower(trim((string) $sheet->getCell('N'.$r)->getValue()));
                     $rgb = match ($val) {
                         'disetujui' => 'DCEEE1',
                         'pending' => 'F3E6C8',
@@ -116,7 +118,7 @@ class ApprovalPrestasiExport implements FromArray, WithEvents
                         default => null,
                     };
                     if ($rgb) {
-                        $sheet->getStyle('M'.$r)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB($rgb);
+                        $sheet->getStyle('N'.$r)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB($rgb);
                     }
                 }
             },

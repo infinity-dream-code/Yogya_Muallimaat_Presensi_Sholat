@@ -51,13 +51,17 @@ class TahfidProgressTemplateDataSheet implements FromArray, WithTitle, WithEvent
             trim((string) ($this->meta['label'] ?? '-')),
             '', '', '', '', '', '', '', '',
         ];
-        $out[] = ['Isi kolom Status baru (proses/lunas). Kosong = dilewati. Jangan ubah kolom jadwal_detail_id.', '', '', '', '', '', '', '', '', '', '', ''];
+        $out[] = ['Isi kolom Status baru (proses/tuntas). Kosong = dilewati. Jangan ubah kolom jadwal_detail_id.', '', '', '', '', '', '', '', '', '', '', ''];
         $out[] = ['', '', '', '', '', '', '', '', '', '', '', ''];
         $out[] = [
             'NIS', 'Nama', 'Kelas', 'No surat', 'Nama surat', 'Asal',
             'Status saat ini', 'Status baru', 'Ayat dari', 'Ayat sampai', 'Catatan', 'jadwal_detail_id',
         ];
         foreach ($this->rows as $row) {
+            $statusNow = strtolower(trim((string) ($row['status_saat_ini'] ?? 'belum')));
+            if (in_array($statusNow, ['lunas', 'selesai', 'lengkap', 'tuntas'], true)) {
+                $statusNow = 'tuntas';
+            }
             $out[] = [
                 trim((string) ($row['nis'] ?? '')),
                 trim((string) ($row['nama'] ?? '')),
@@ -65,7 +69,7 @@ class TahfidProgressTemplateDataSheet implements FromArray, WithTitle, WithEvent
                 (int) ($row['surah_nomor'] ?? 0),
                 trim((string) ($row['surah_nama'] ?? '')),
                 trim((string) ($row['asal'] ?? 'Kelas')),
-                trim((string) ($row['status_saat_ini'] ?? 'belum')),
+                $statusNow,
                 '',
                 '',
                 '',
@@ -104,7 +108,7 @@ class TahfidProgressTemplateDataSheet implements FromArray, WithTitle, WithEvent
                     $validation->setErrorStyle(DataValidation::STYLE_STOP);
                     $validation->setAllowBlank(true);
                     $validation->setShowDropDown(true);
-                    $validation->setFormula1('"proses,lunas"');
+                    $validation->setFormula1('"proses,tuntas"');
                     $sheet->setDataValidation('H6:H'.$lastRow, $validation);
                 }
                 $sheet->getStyle('A1:L'.$lastRow)->getAlignment()->setVertical(Alignment::VERTICAL_CENTER);
@@ -126,9 +130,9 @@ class TahfidProgressTemplateHintSheet implements FromArray, WithTitle
             ['Cara isi template setoran tahfid'],
             [''],
             ['1', 'Jangan ubah kolom NIS, Nama, Kelas, surat, Status saat ini, dan jadwal_detail_id.'],
-            ['2', 'Isi Status baru: proses atau lunas. Kosongkan jika baris itu tidak diubah.'],
+            ['2', 'Isi Status baru: proses atau tuntas. Kosongkan jika baris itu tidak diubah.'],
             ['3', 'Jika proses, isi Ayat dari dan Ayat sampai sesuai target jadwal surat.'],
-            ['4', 'Jika lunas, ayat boleh dikosongkan (dianggap lengkap).'],
+            ['4', 'Jika tuntas, ayat boleh dikosongkan (dianggap lengkap).'],
             ['5', 'Catatan opsional, maksimal 500 karakter.'],
             ['6', 'Unggah file ini di halaman Progress siswi. Maksimal 500 baris per unggah.'],
             [''],

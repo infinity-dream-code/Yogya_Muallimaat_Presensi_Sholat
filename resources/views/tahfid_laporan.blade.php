@@ -115,13 +115,13 @@
             <a class="chip {{ $status === '' ? 'active' : '' }}" href="{{ route('tahfid.laporan.index', $tabBase + array_filter(['tingkat' => $tingkat])) }}">Semua</a>
             <a class="chip {{ $status === 'belum_selesai' ? 'active' : '' }}" href="{{ route('tahfid.laporan.index', array_filter($tabBase + ['tingkat' => $tingkat, 'status' => 'belum_selesai'])) }}">Belum selesai</a>
             <a class="chip {{ $status === 'proses' ? 'active' : '' }}" href="{{ route('tahfid.laporan.index', array_filter($tabBase + ['tingkat' => $tingkat, 'status' => 'proses'])) }}">Proses</a>
-            <a class="chip {{ $status === 'lunas' ? 'active' : '' }}" href="{{ route('tahfid.laporan.index', array_filter($tabBase + ['tingkat' => $tingkat, 'status' => 'lunas'])) }}">Lunas semua</a>
+            <a class="chip {{ $status === 'lunas' ? 'active' : '' }}" href="{{ route('tahfid.laporan.index', array_filter($tabBase + ['tingkat' => $tingkat, 'status' => 'lunas'])) }}">Tuntas semua</a>
         </div>
 
         <div class="table-toolbar">
             <span class="count-pill">
                 {{ (int) $ringkasan['jumlah_siswi'] }} siswi
-                · {{ (int) $ringkasan['lunas_penuh'] }} lunas penuh
+                · {{ (int) $ringkasan['lunas_penuh'] }} tuntas penuh
                 · {{ (int) $ringkasan['masih_proses'] }} proses
                 · {{ (int) $ringkasan['belum_mulai'] }} belum mulai
             </span>
@@ -160,14 +160,14 @@
                             <td colspan="5">
                                 <i class="fas fa-folder"></i>
                                 {{ $group['kelas'] }}
-                                <span class="group-count">{{ $group['lunas_penuh'] }}/{{ $group['count'] }} lunas</span>
+                                <span class="group-count">{{ $group['lunas_penuh'] }}/{{ $group['count'] }} tuntas</span>
                             </td>
                         </tr>
                         @foreach($group['items'] as $item)
                             @php
                                 $badge = trim((string) ($item['badge'] ?? 'belum'));
                                 $badgeClass = $badge === 'lunas' ? 'approved' : ($badge === 'proses' ? 'pending' : 'role-ms');
-                                $badgeLabel = $badge === 'lunas' ? 'Lunas' : ($badge === 'proses' ? 'Proses' : 'Belum');
+                                $badgeLabel = $badge === 'lunas' ? 'Tuntas' : ($badge === 'proses' ? 'Proses' : 'Belum');
                                 $target = (int) ($item['target'] ?? 0);
                                 $lunas = (int) ($item['lunas'] ?? 0);
                                 $persen = (int) ($item['persen'] ?? 0);
@@ -233,7 +233,7 @@
                                                     @php
                                                         $st = trim((string) ($row['status'] ?? 'belum'));
                                                         $stClass = $st === 'lunas' ? 'approved' : ($st === 'proses' ? 'pending' : 'role-ms');
-                                                        $stLabel = $st === 'lunas' ? 'Lunas' : ($st === 'proses' ? 'Proses' : 'Belum');
+                                                        $stLabel = $st === 'lunas' ? 'Tuntas' : ($st === 'proses' ? 'Proses' : 'Belum');
                                                         $asal = trim((string) ($row['sumber'] ?? 'kelas')) === 'percepatan' ? 'Percepatan' : 'Kelas';
                                                         $asalKelas = trim((string) ($row['kelas'] ?? ''));
                                                         $ayatDari = (int) ($row['ayat_dari'] ?? 0);
@@ -321,7 +321,7 @@
                         <label for="exportStatus">Cakupan</label>
                         <select id="exportStatus" name="status">
                             <option value="" {{ ($status ?? '') === '' ? 'selected' : '' }}>Keseluruhan</option>
-                            <option value="lunas" {{ ($status ?? '') === 'lunas' ? 'selected' : '' }}>Sudah selesai / lunas semua</option>
+                            <option value="lunas" {{ ($status ?? '') === 'lunas' ? 'selected' : '' }}>Sudah selesai / tuntas semua</option>
                             <option value="proses" {{ ($status ?? '') === 'proses' ? 'selected' : '' }}>Masih proses</option>
                             <option value="belum_selesai" {{ ($status ?? '') === 'belum_selesai' ? 'selected' : '' }}>Belum selesai</option>
                         </select>

@@ -282,6 +282,30 @@ function secure_validate_semester(string $value): ?string
     return ($value === '1' || $value === '2') ? $value : null;
 }
 
+function secure_validate_tanggal(string $value): ?string
+{
+    $value = trim($value);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+        return null;
+    }
+    $dt = DateTime::createFromFormat('Y-m-d', $value);
+    $errors = DateTime::getLastErrors();
+    if (
+        !$dt
+        || $dt->format('Y-m-d') !== $value
+        || (is_array($errors) && (($errors['warning_count'] ?? 0) > 0 || ($errors['error_count'] ?? 0) > 0))
+    ) {
+        return null;
+    }
+    $year = (int) $dt->format('Y');
+    $maxYear = (int) date('Y') + 1;
+    if ($year < 2000 || $year > $maxYear) {
+        return null;
+    }
+
+    return $value;
+}
+
 function secure_validate_nisn(string $value): ?string
 {
     $value = trim($value);
@@ -512,6 +536,33 @@ function ensureCatatanAdminColumn(PDO $pdo): void
         }
         writeLog("CATATAN_ADMIN_ALTER_FAIL", ["message" => $msg]);
         fail(500, "Kolom catatan_admin belum ada. Jalankan ws/sql/aka_reward_catatan_admin.sql");
+    }
+}
+
+function ensureTanggalPelaksanaanColumn(PDO $pdo): void
+{
+    static $ready = false;
+    if ($ready) {
+        return;
+    }
+    try {
+        $pdo->query("SELECT tanggal_pelaksanaan FROM aka_reward LIMIT 0");
+        $ready = true;
+        return;
+    } catch (Throwable) {
+        // Kolom belum ada.
+    }
+    try {
+        $pdo->exec("ALTER TABLE aka_reward ADD COLUMN tanggal_pelaksanaan DATE NULL DEFAULT NULL AFTER no_sertifikat");
+        $ready = true;
+    } catch (Throwable $e) {
+        $msg = $e->getMessage();
+        if (stripos($msg, "Duplicate column") !== false) {
+            $ready = true;
+            return;
+        }
+        writeLog("TANGGAL_PELAKSANAAN_ALTER_FAIL", ["message" => $msg]);
+        fail(500, "Kolom tanggal_pelaksanaan belum ada. Jalankan ws/sql/aka_reward_tanggal_pelaksanaan.sql");
     }
 }
 
@@ -1600,6 +1651,7 @@ function doApproval(array $req, array $auth): array
 
     $pdo = dbConnectPdo();
     ensureCatatanAdminColumn($pdo);
+    ensureTanggalPelaksanaanColumn($pdo);
     $userCode01 = isSuperadminRole((string) ($auth["role"] ?? ""))
         ? ""
         : trim((string) ($auth["code01"] ?? ""));
@@ -1644,6 +1696,7 @@ function doApproval(array $req, array $auth): array
                 ar.keterangan,
                 ar.penyelenggara,
                 ar.no_sertifikat,
+                ar.tanggal_pelaksanaan,
                 ar.nilai_penghargaan,
                 ar.bta,
                 ar.semester,
@@ -1853,6 +1906,7 @@ function validatePrestasiInput(array $req): array
     $keterangan = secure_validate_text_field((string) ($req["keterangan"] ?? ""), 500);
     $penyelenggara = secure_validate_text_field((string) ($req["penyelenggara"] ?? ""), 150);
     $noSertifikat = secure_validate_text_field((string) ($req["no_sertifikat"] ?? ""), 80);
+    $tanggalPelaksanaan = secure_validate_tanggal((string) ($req["tanggal_pelaksanaan"] ?? ($req["tanggal_lomba"] ?? ($req["tgl_pelaksanaan"] ?? ""))));
     $tahun = secure_validate_tahun_akademik((string) ($req["tahun_akademik"] ?? ($req["bta"] ?? "")));
     $semester = secure_validate_semester((string) ($req["semester"] ?? ""));
     $nisn = secure_validate_nisn((string) ($req["nisn"] ?? ""));
@@ -1869,6 +1923,9 @@ function validatePrestasiInput(array $req): array
     }
     if ($noSertifikat === null) {
         fail(422, "No sertifikat tidak valid");
+    }
+    if ($tanggalPelaksanaan === null) {
+        fail(422, "Tanggal pelaksanaan lomba wajib diisi (YYYY-MM-DD)");
     }
     if ($tahun === null) {
         fail(422, "Tahun akademik tidak valid");
@@ -1890,6 +1947,7 @@ function validatePrestasiInput(array $req): array
         "keterangan" => $keterangan,
         "penyelenggara" => $penyelenggara,
         "no_sertifikat" => $noSertifikat,
+        "tanggal_pelaksanaan" => $tanggalPelaksanaan,
         "tahun_akademik" => $tahun,
         "semester" => (int) $semester,
         "nisn" => $nisn,
@@ -2014,6 +2072,7 @@ function mapSiswaPrestasiRow(array $row): array
         "keterangan" => (string) ($row["keterangan"] ?? ""),
         "penyelenggara" => (string) ($row["penyelenggara"] ?? ""),
         "no_sertifikat" => (string) ($row["no_sertifikat"] ?? ""),
+        "tanggal_pelaksanaan" => trim((string) ($row["tanggal_pelaksanaan"] ?? "")),
         "nilai_penghargaan" => $nilai,
         "tahun_akademik" => (string) ($row["bta"] ?? ""),
         "semester" => (int) ($row["semester"] ?? 1),
@@ -2031,6 +2090,7 @@ function doGetPrestasiSaya(array $auth): array
     $siswa = assertSiswaSession($auth);
     $pdo = dbConnectPdo();
     ensureCatatanAdminColumn($pdo);
+    ensureTanggalPelaksanaanColumn($pdo);
 
     $sql = "
         SELECT
@@ -2043,6 +2103,7 @@ function doGetPrestasiSaya(array $auth): array
             ar.keterangan,
             ar.penyelenggara,
             ar.no_sertifikat,
+            ar.tanggal_pelaksanaan,
             ar.nilai_penghargaan,
             ar.bta,
             ar.semester,
@@ -2125,6 +2186,7 @@ function doSubmitPrestasi(array $req, array $auth): array
     $pdo = dbConnectPdo();
     ensureAutoIncrementInsert($pdo);
     ensureCatatanAdminColumn($pdo);
+    ensureTanggalPelaksanaanColumn($pdo);
     assertTahunAkademikExists($pdo, $fields["tahun_akademik"]);
     $code01 = trim((string) ($auth["code01"] ?? ""));
     if ($code01 === "") {
@@ -2154,6 +2216,7 @@ function doSubmitPrestasi(array $req, array $auth): array
                 keterangan = :keterangan,
                 penyelenggara = :penyelenggara,
                 no_sertifikat = :sertifikat,
+                tanggal_pelaksanaan = :tanggal_pelaksanaan,
                 nilai_penghargaan = :nilai,
                 bta = :bta,
                 semester = :semester,
@@ -2178,6 +2241,7 @@ function doSubmitPrestasi(array $req, array $auth): array
             $stmt->bindValue(":keterangan", $fields["keterangan"], PDO::PARAM_STR);
             $stmt->bindValue(":penyelenggara", $fields["penyelenggara"], PDO::PARAM_STR);
             $stmt->bindValue(":sertifikat", $fields["no_sertifikat"], PDO::PARAM_STR);
+            $stmt->bindValue(":tanggal_pelaksanaan", $fields["tanggal_pelaksanaan"], PDO::PARAM_STR);
             $stmt->bindValue(":nilai", $selection["nilai_penghargaan"], PDO::PARAM_STR);
             $stmt->bindValue(":bta", $fields["tahun_akademik"], PDO::PARAM_STR);
             $stmt->bindValue(":semester", $fields["semester"], PDO::PARAM_INT);
@@ -2206,9 +2270,9 @@ function doSubmitPrestasi(array $req, array $auth): array
 
     $sql = "
         INSERT INTO aka_reward
-            (id, custid, nocust, nmcust, kelas, nisn, jenis_prestasi, prestasi_kategori_id, prestasi_tingkat_id, prestasi_poin_id, keterangan, penyelenggara, no_sertifikat, nilai_penghargaan, bta, semester, url, isapproved, approveddate, approvedby, created_at, updated_at)
+            (id, custid, nocust, nmcust, kelas, nisn, jenis_prestasi, prestasi_kategori_id, prestasi_tingkat_id, prestasi_poin_id, keterangan, penyelenggara, no_sertifikat, tanggal_pelaksanaan, nilai_penghargaan, bta, semester, url, isapproved, approveddate, approvedby, created_at, updated_at)
         VALUES
-            (:id, :custid, :nocust, :nmcust, :kelas, :nisn, :jenis, :kategori, :tingkat, :poin, :keterangan, :penyelenggara, :sertifikat, :nilai, :bta, :semester, :url, 'pending', NULL, NULL, NOW(), NOW())
+            (:id, :custid, :nocust, :nmcust, :kelas, :nisn, :jenis, :kategori, :tingkat, :poin, :keterangan, :penyelenggara, :sertifikat, :tanggal_pelaksanaan, :nilai, :bta, :semester, :url, 'pending', NULL, NULL, NOW(), NOW())
     ";
 
     try {
@@ -2226,6 +2290,7 @@ function doSubmitPrestasi(array $req, array $auth): array
         $stmt->bindValue(":keterangan", $fields["keterangan"], PDO::PARAM_STR);
         $stmt->bindValue(":penyelenggara", $fields["penyelenggara"], PDO::PARAM_STR);
         $stmt->bindValue(":sertifikat", $fields["no_sertifikat"], PDO::PARAM_STR);
+        $stmt->bindValue(":tanggal_pelaksanaan", $fields["tanggal_pelaksanaan"], PDO::PARAM_STR);
         $stmt->bindValue(":nilai", $selection["nilai_penghargaan"], PDO::PARAM_STR);
         $stmt->bindValue(":bta", $fields["tahun_akademik"], PDO::PARAM_STR);
         $stmt->bindValue(":semester", $fields["semester"], PDO::PARAM_INT);
@@ -2235,7 +2300,7 @@ function doSubmitPrestasi(array $req, array $auth): array
         $sqlMsg = $e->getMessage();
         writeLog("SUBMIT_SQL_FAIL", ["sqlstate" => $e->getCode(), "message" => $sqlMsg]);
         if (str_contains($sqlMsg, "Unknown column")) {
-            fail(500, "Kolom aka_reward belum lengkap. Jalankan query ALTER di Navicat (ws/sql/alter_aka_reward_kolom_prestasi.sql).");
+            fail(500, "Kolom aka_reward belum lengkap. Jalankan ws/sql/aka_reward_tanggal_pelaksanaan.sql");
         }
         if (str_contains($sqlMsg, "Incorrect integer") || str_contains(strtolower($sqlMsg), "isapproved")) {
             fail(500, "Kolom isapproved belum ENUM pending/approve/canceled. Jalankan ws/sql/aka_reward_approval_status.sql");
@@ -2851,7 +2916,7 @@ function ensureTahfidProgressTables(PDO $pdo): void
 function tahfidProgressStatusLabel(string $status): string
 {
     return match ($status) {
-        "lunas" => "Lunas",
+        "lunas" => "Tuntas",
         "proses" => "Proses",
         default => "Belum",
     };
@@ -3193,7 +3258,7 @@ function tahfidUpsertProgress(
 
     $nama = trim((string) ($row["surah_nama"] ?? "Surat"));
     $msg = $summary["status"] === "lunas"
-        ? ($nama . " lunas / selesai")
+        ? ($nama . " tuntas")
         : ("Progress " . $nama . " tercatat (" . ($summary["progress_label"] ?: ("ayat " . $ayatDari . "–" . $ayatSampai)) . ")");
     return [
         "progress_id" => $progressId,
@@ -4178,7 +4243,7 @@ function tahfidStaffSaveProgress(PDO $pdo, array $req, array $auth): array
     if (!$siswa) {
         fail(404, "Siswi tidak ditemukan pada unit Anda");
     }
-    $forceLunas = in_array(strtolower(trim((string) ($req["status"] ?? $req["mode"] ?? ""))), ["lunas", "selesai", "lengkap"], true)
+    $forceLunas = in_array(strtolower(trim((string) ($req["status"] ?? $req["mode"] ?? ""))), ["lunas", "tuntas", "selesai", "lengkap"], true)
         || ((int) ($req["is_lengkap"] ?? 0)) === 1;
     $ayatDari = (int) ($req["ayat_dari"] ?? 0);
     $ayatSampai = (int) ($req["ayat_sampai"] ?? 0);

@@ -146,8 +146,8 @@
                                         <td>{{ $row['surat'] ?? '-' }}</td>
                                         <td>{{ ($row['status_saat_ini'] ?? '') !== '' ? $row['status_saat_ini'] : '-' }}</td>
                                         <td>
-                                            @if(($row['status'] ?? '') === 'lunas' || ($row['status'] ?? '') === 'selesai' || ($row['status'] ?? '') === 'lengkap')
-                                                <span class="badge approved">lunas</span>
+                                            @if(in_array(($row['status'] ?? ''), ['lunas', 'tuntas', 'selesai', 'lengkap'], true))
+                                                <span class="badge approved">tuntas</span>
                                             @else
                                                 <span class="badge pending">{{ $row['status'] ?? 'proses' }}</span>
                                             @endif
@@ -166,7 +166,7 @@
                         </table>
                     </div>
                 @else
-                    <p class="cell-sub" style="margin:0 0 10px">Tidak ada baris yang akan diubah. Isi kolom Status baru dengan proses atau lunas.</p>
+                    <p class="cell-sub" style="margin:0 0 10px">Tidak ada baris yang akan diubah. Isi kolom Status baru dengan proses atau tuntas.</p>
                 @endif
 
                 @if(count($previewInvalid) > 0)
@@ -228,7 +228,7 @@
                         <div class="cell-sub">NIS {{ $siswa['nocust'] ?: '-' }} · {{ $siswa['sekolah'] ?: 'Unit' }} · Kelas {{ $siswa['kelas'] ?: '-' }}</div>
                     </div>
                 </div>
-                <span class="count-pill">{{ $lunasN }}/{{ $total }} surat lunas</span>
+                <span class="count-pill">{{ $lunasN }}/{{ $total }} surat tuntas</span>
             </div>
 
             @if(count($groups) === 0)
@@ -241,7 +241,7 @@
                     <button type="button" class="chip active" data-filter="all">Semua</button>
                     <button type="button" class="chip" data-filter="belum">Belum</button>
                     <button type="button" class="chip" data-filter="proses">Proses</button>
-                    <button type="button" class="chip" data-filter="lunas">Lunas</button>
+                    <button type="button" class="chip" data-filter="lunas">Tuntas</button>
                 </div>
                 <div class="table-wrap">
                     <table class="data" id="progressTable">
@@ -265,14 +265,14 @@
                                 <td colspan="6">
                                     <i class="fas fa-folder"></i>
                                     {{ $isAccel ? 'Percepatan' : 'Kelas siswi' }} · {{ $group['kelas'] ?? '-' }}
-                                    <span class="group-count">{{ (int) ($group['jumlah_lunas'] ?? 0) }}/{{ count($details) }} lunas</span>
+                                    <span class="group-count">{{ (int) ($group['jumlah_lunas'] ?? 0) }}/{{ count($details) }} tuntas</span>
                                 </td>
                             </tr>
                             @foreach($details as $i => $row)
                                 @php
                                     $st = trim((string) ($row['progress_status'] ?? 'belum'));
                                     $badge = $st === 'lunas' ? 'approved' : ($st === 'proses' ? 'pending' : 'role-ms');
-                                    $label = $st === 'lunas' ? 'Lunas' : ($st === 'proses' ? 'Proses' : 'Belum');
+                                    $label = $st === 'lunas' ? 'Tuntas' : ($st === 'proses' ? 'Proses' : 'Belum');
                                     $targetDari = (int) ($row['ayat_dari'] ?? 1);
                                     $targetSampai = (int) ($row['ayat_sampai'] ?? $targetDari);
                                     $nextDari = $st === 'proses' ? max($targetDari, ((int) ($row['progress_ayat_sampai'] ?? 0)) + 1) : $targetDari;
@@ -328,7 +328,7 @@
                                                         <label>Status</label>
                                                         <select name="status" class="js-mode">
                                                             <option value="proses" {{ $st !== 'lunas' ? 'selected' : '' }}>Proses</option>
-                                                            <option value="lunas" {{ $st === 'lunas' ? 'selected' : '' }}>Lunas / selesai</option>
+                                                            <option value="lunas" {{ $st === 'lunas' ? 'selected' : '' }}>Tuntas</option>
                                                         </select>
                                                     </div>
                                                     <div class="field js-ayat">
